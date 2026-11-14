@@ -276,6 +276,12 @@ methods = '''    // ---- BlockComet: bundled Fabric versions and mods (assets/cu
         }
     }
 
+    /** True only for the "Meteor <version>" instances BlockComet made itself. A Fabric instance the player creates, even with the same Fabric version, never gets Meteor Client or the other bundled mods. */
+    public static boolean isBundledInstance(git.artdeell.mojo.instances.Instance instance) {
+        if (instance == null || instance.versionId == null || !getBundledVersionIds().contains(instance.versionId)) return false;
+        return "blockcomet".equals(instance.icon) || (instance.name != null && instance.name.startsWith("Meteor "));
+    }
+
     /** Copies the bundled mods of the instance's game version (Fabric API + Meteor Client) into its mods directory. Performance mods only when the user turned that option on in the settings. */
     public static void installBundledMods(git.artdeell.mojo.instances.Instance instance) {
         installFolders(instance, git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_perf_mods", false) ? new String[]{"mods", "perf"} : new String[]{"mods"});
@@ -327,7 +333,7 @@ methods = '''    // ---- BlockComet: bundled Fabric versions and mods (assets/cu
         if (bundled.isEmpty()) return;
         git.artdeell.mojo.instances.Instances.ensureBundledInstances();
         for (git.artdeell.mojo.instances.Instance instance : git.artdeell.mojo.instances.Instances.loadAllInstances()) {
-            if (bundled.contains(instance.versionId)) installBundledMods(instance);
+            if (isBundledInstance(instance)) installBundledMods(instance);
         }
     }
 

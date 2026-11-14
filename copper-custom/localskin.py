@@ -92,7 +92,7 @@ patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
 patch(os.path.join(java, "utils", "jre", "GameRunner.java"), [(
     "        File gamedir = instance.getGameDirectory();\n        JVersionList.Version versionInfo = Tools.getVersionInfo(versionId);",
     "        File gamedir = instance.getGameDirectory();\n"
-    "        if (git.artdeell.mojo.tasks.AsyncAssetManager.getBundledVersionIds().contains(instance.versionId)) {\n"
+    "        if (git.artdeell.mojo.tasks.AsyncAssetManager.isBundledInstance(instance)) {\n"
     "            git.artdeell.mojo.tasks.AsyncAssetManager.installBundledMods(instance); // honours \"Download performance mods\"\n"
     "        }\n"
     "        git.artdeell.mojo.skins.LocalSkins.install(account, instance);\n"
