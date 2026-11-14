@@ -171,6 +171,56 @@ public final class LocalSkins {
         }
     }
 
+    public static final int UNPUBLISH_OK = 0;
+    public static final int UNPUBLISH_NOTHING = 1;
+    public static final int UNPUBLISH_FAILED = 2;
+
+    public interface Callback {
+        void done(int result);
+    }
+
+    /**
+     * Removes the player's published skin from the BlockComet skin service (only the device that published it can).
+     * The skin that is chosen now is not published again; choosing another one publishes that one at the next game start.
+     */
+    public static void unpublish(String username, Callback callback) {
+        Thread thread = new Thread(() -> {
+            int result = UNPUBLISH_FAILED;
+            java.net.HttpURLConnection connection = null;
+            try {
+                final android.content.SharedPreferences prefs = AsyncAssetManager.getBundlePrefs();
+                final String lower = username.toLowerCase(java.util.Locale.ROOT);
+                final String token = prefs.getString("skin_token_" + lower, null);
+                if (SKINS_API.isEmpty() || token == null) {
+                    result = UNPUBLISH_NOTHING;
+                } else {
+                    connection = (java.net.HttpURLConnection) new java.net.URL(SKINS_API + "/skins/" + username + ".png").openConnection();
+                    connection.setRequestMethod("DELETE");
+                    connection.setConnectTimeout(8000);
+                    connection.setReadTimeout(8000);
+                    connection.setRequestProperty("X-Skin-Token", token);
+                    int code = connection.getResponseCode();
+                    if (code == 200 || code == 404) {
+                        result = code == 200 ? UNPUBLISH_OK : UNPUBLISH_NOTHING;
+                        SkinLibrary.Entry entry = SkinLibrary.find(SkinLibrary.getSelected(SkinLibrary.localKey(username)));
+                        if (entry != null) {
+                            String hash = hex(java.security.MessageDigest.getInstance("SHA-256").digest(SkinLibrary.readBytes(entry)));
+                            prefs.edit().putString("skin_published_" + lower, hash).apply();
+                        }
+                    }
+                    Log.i(TAG, "Unpublish " + username + ": HTTP " + code);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not remove the published skin", e);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            if (callback != null) callback.done(result);
+        }, "BlockCometSkinUnpublish");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
     private static String hex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) sb.append(String.format(java.util.Locale.ROOT, "%02x", b));

@@ -1,11 +1,12 @@
 // BlockComet skin registry: one PNG per player name, kept in Cloudflare KV (free plan is enough).
 //   GET /skins/<name>.png   the skin (what CustomSkinLoader asks for), 404 when the player has none
-//   PUT /skins/<name>.png   publish: body = PNG, header X-Skin-Token = secret the launcher made for that name
+//   PUT /skins/<name>.png   publish or replace: body = PNG, header X-Skin-Token = secret the launcher made for that name
+//   DELETE /skins/<name>.png  remove the skin (same token); the name is free to claim again afterwards
 // A name belongs to whoever published it first (the token's hash is stored); only the same token can replace the skin.
 const NAME = /^[A-Za-z0-9_]{3,16}$/;
 const MAX_BYTES = 24 * 1024;
 const MIN_SECONDS_BETWEEN_WRITES = 10;
-const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "x-skin-token, content-type", "access-control-allow-methods": "GET, HEAD, PUT, OPTIONS" };
+const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "x-skin-token, content-type", "access-control-allow-methods": "GET, HEAD, PUT, DELETE, OPTIONS" };
 
 const text = (body, status = 200, extra = {}) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8", ...CORS, ...extra } });
 
@@ -59,6 +60,16 @@ export default {
       ctx.waitUntil(caches.default.delete(new Request(url.origin + "/skins/" + m[1] + ".png")));
       return text("ok", 200);
     }
-    return text("method not allowed", 405, { allow: "GET, HEAD, PUT, OPTIONS" });
+    if (req.method === "DELETE") {
+      const token = req.headers.get("x-skin-token") || "";
+      if (!/^[0-9a-f]{32,128}$/.test(token)) return text("missing or bad X-Skin-Token", 401);
+      const { value, metadata } = await env.SKINS.getWithMetadata(key, { type: "arrayBuffer" });
+      if (!value) return text("no skin", 404);
+      if (!metadata || metadata.owner !== (await sha256Hex(token))) return text("this name belongs to another token", 403);
+      await env.SKINS.delete(key);
+      ctx.waitUntil(caches.default.delete(new Request(url.origin + "/skins/" + m[1] + ".png")));
+      return text("deleted", 200);
+    }
+    return text("method not allowed", 405, { allow: "GET, HEAD, PUT, DELETE, OPTIONS" });
   },
 };

@@ -75,6 +75,35 @@ jobs:
           [ -n "$URL" ] || { echo "::error::deployed, but no workers.dev address in the output (is a workers.dev subdomain set up for the account?)"; exit 1; }
           echo "url=$URL" > "$GITHUB_OUTPUT"
           echo "Skin service: $URL"
+          # Live test of the deployed service: publish, read, replace, refuse a stranger, delete, name free again
+          python3 - <<'PY2'
+          import struct, zlib
+          raw = b"".join(b"\x00" + b"\x1e\x88\xe5\xff" * 64 for _ in range(64))
+          def c(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+          open("/tmp/skin.png", "wb").write(b"\x89PNG\r\n\x1a\n" + c(b"IHDR", struct.pack(">IIBBBBB", 64, 64, 8, 6, 0, 0, 0)) + c(b"IDAT", zlib.compress(raw)) + c(b"IEND", b""))
+          PY2
+          N="ci_$(openssl rand -hex 4)"; A=$(openssl rand -hex 24); B=$(openssl rand -hex 24); F="$URL/skins/$N.png"
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          sleep 8
+          R=""
+          chk() { if [ "$2" = "$3" ]; then R="$R\nPASS  $1 ($2)"; else R="$R\nFAIL  $1 (got $2, wanted $3)"; BAD=1; fi; }
+          BAD=0
+          chk "no skin yet"                  "$(code "$F")" 404
+          chk "publish"                      "$(code -X PUT -H "X-Skin-Token: $A" --data-binary @/tmp/skin.png "$F")" 200
+          sleep 1
+          chk "read it back"                 "$(code "$F")" 200
+          chk "stranger cannot replace"      "$(code -X PUT -H "X-Skin-Token: $B" --data-binary @/tmp/skin.png "$F")" 403
+          chk "stranger cannot delete"       "$(code -X DELETE -H "X-Skin-Token: $B" "$F")" 403
+          chk "not a skin is refused"        "$(code -X PUT -H "X-Skin-Token: $B" --data-binary 'hello' "$URL/skins/${N}x.png")" 400
+          sleep 11
+          chk "owner replaces the skin"      "$(code -X PUT -H "X-Skin-Token: $A" --data-binary @/tmp/skin.png "$F")" 200
+          chk "owner deletes the skin"       "$(code -X DELETE -H "X-Skin-Token: $A" "$F")" 200
+          sleep 1
+          chk "gone after delete"            "$(code "$F")" 404
+          chk "name can be claimed again"    "$(code -X PUT -H "X-Skin-Token: $B" --data-binary @/tmp/skin.png "$F")" 200
+          code -X DELETE -H "X-Skin-Token: $B" "$F" >/dev/null
+          printf "$R\n" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$BAD" = 0 ] || { echo "::error::the live skin service test failed"; exit 1; }
 
   build:
     needs: skins-api

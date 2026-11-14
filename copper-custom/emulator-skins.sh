@@ -76,8 +76,11 @@ shot 05-account-list
 ui tap-id edit_account_button; sleep 3
 check "skin editor opens for the local account" wait_for 'skin_grid' 30
 shot 06-skin-editor
+check "the 'delete my published skin' button is shown for a local account" wait_for 'skin_unpublish_button' 20
 ui tap-id tile_image; sleep 3
 shot 07-skin-chosen
+ui tap-id skin_unpublish_button; sleep 4
+shot 07b-after-delete-button
 check "the skin choice is stored for '$NAME'" bash -c "adb shell \"run-as $PKG cat skins/index.json\" | grep -q 'local:$NAME'"
 adb shell "run-as $PKG cat skins/index.json" | tee -a "$RESULT"; echo | tee -a "$RESULT"
 

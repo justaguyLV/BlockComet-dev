@@ -98,6 +98,42 @@ patch(os.path.join(java, "utils", "jre", "GameRunner.java"), [(
     "        git.artdeell.mojo.skins.LocalSkins.install(account, instance);\n"
     "        JVersionList.Version versionInfo = Tools.getVersionInfo(versionId);")])
 
+# ---- Skin editor: "Delete my published skin" (local accounts only) -----------------------------------------------
+patch(os.path.join(res, "layout", "fragment_skin_editor.xml"), [(
+    '            android:text="@string/skin_editor_slim" />\n    </LinearLayout>',
+    '            android:text="@string/skin_editor_slim" />\n\n'
+    '        <com.google.android.material.button.MaterialButton\n'
+    '            android:id="@+id/skin_unpublish_button"\n'
+    '            style="?attr/materialButtonOutlinedStyle"\n'
+    '            android:layout_width="match_parent"\n'
+    '            android:layout_height="wrap_content"\n'
+    '            android:layout_margin="@dimen/_8sdp"\n'
+    '            android:text="@string/blockcomet_unpublish_button"\n'
+    '            android:visibility="gone" />\n'
+    '    </LinearLayout>')])
+patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
+    ("        mSlimSwitch.setEnabled(false);\n        mSlimSwitch.setOnCheckedChangeListener((button, checked) -> {",
+     "        view.findViewById(R.id.skin_unpublish_button).setOnClickListener(v -> onUnpublishClicked());\n"
+     "        mSlimSwitch.setEnabled(false);\n        mSlimSwitch.setOnCheckedChangeListener((button, checked) -> {"),
+    ("        if (result.account != null) mAccount = result.account;",
+     "        if (result.account != null) mAccount = result.account;\n"
+     "        View unpublishButton = getView() == null ? null : getView().findViewById(R.id.skin_unpublish_button);\n"
+     "        if (unpublishButton != null) unpublishButton.setVisibility(mAccount != null && mAccount.authType == AuthType.LOCAL ? View.VISIBLE : View.GONE);"),
+    ("    // ------------------------------------------------------------------ loading",
+     "    /** BlockComet: removes the skin this local player published for the other players. */\n"
+     "    private void onUnpublishClicked() {\n"
+     "        if (mAccount == null || mAccount.username == null) return;\n"
+     "        final android.content.Context appContext = requireContext().getApplicationContext();\n"
+     "        beginBusy();\n"
+     "        LocalSkins.unpublish(mAccount.username, result -> mHandler.post(() -> {\n"
+     "            endBusy();\n"
+     "            int message = result == LocalSkins.UNPUBLISH_OK ? R.string.blockcomet_unpublish_done\n"
+     "                    : result == LocalSkins.UNPUBLISH_NOTHING ? R.string.blockcomet_unpublish_none : R.string.blockcomet_unpublish_failed;\n"
+     "            android.widget.Toast.makeText(appContext, message, android.widget.Toast.LENGTH_LONG).show();\n"
+     "        }));\n"
+     "    }\n\n"
+     "    // ------------------------------------------------------------------ loading")])
+
 # ---- Settings switch + texts ---------------------------------------------------------------------------------------
 patch(os.path.join(res, "xml", "pref_misc.xml"), [(
     "<git.artdeell.mojo.prefs.BackButtonPreference />",
@@ -121,6 +157,10 @@ en = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_perf_mods_desc">Add FerriteCore, Lithium, ModernFix, Krypton, Noisium, MemoryLeakFix and ScalableLux to the Meteor instances the next time a game starts. Off by default: nothing is added without your permission, and turning it off never removes mods you already have.</string>
     <string name="blockcomet_share_skin_title">Share my skin with other players</string>
     <string name="blockcomet_share_skin_desc">When you start a game with a local account, your chosen skin is published under your player name so other BlockComet players see it. Turn this off to keep your skin on this phone only.</string>
+    <string name="blockcomet_unpublish_button">Delete my published skin</string>
+    <string name="blockcomet_unpublish_done">Your skin was removed for other players. Choose another skin and it is published the next time a game starts.</string>
+    <string name="blockcomet_unpublish_none">No skin of this name was published from this phone.</string>
+    <string name="blockcomet_unpublish_failed">Could not remove it. Check your connection and try again.</string>
 </resources>
 '''
 ar = '''<?xml version="1.0" encoding="utf-8"?>
@@ -129,6 +169,10 @@ ar = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_perf_mods_desc">يضيف FerriteCore وLithium وModernFix وKrypton وNoisium وMemoryLeakFix وScalableLux إلى نسخ Meteor عند تشغيل اللعبة المرة القادمة. معطّل افتراضيًا: لا يُضاف أي مود بدون إذنك، وإيقافه لا يحذف مودات موجودة عندك.</string>
     <string name="blockcomet_share_skin_title">مشاركة سكني مع اللاعبين</string>
     <string name="blockcomet_share_skin_desc">عند تشغيل لعبة بحساب محلي يُنشر السكن الذي اخترته باسم لاعبك ليراه لاعبو BlockComet الآخرون. أوقفه إن أردت إبقاء سكنك على هذا الجوال فقط.</string>
+    <string name="blockcomet_unpublish_button">حذف سكني المنشور</string>
+    <string name="blockcomet_unpublish_done">تم حذف سكنك عند اللاعبين. اختر سكنًا آخر وسيُنشر عند تشغيل اللعبة المرة القادمة.</string>
+    <string name="blockcomet_unpublish_none">لا يوجد سكن منشور بهذا الاسم من هذا الجوال.</string>
+    <string name="blockcomet_unpublish_failed">تعذّر الحذف. تحقق من الاتصال وحاول مرة أخرى.</string>
 </resources>
 '''
 os.makedirs(os.path.join(res, "values-ar"), exist_ok=True)
