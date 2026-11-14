@@ -114,20 +114,44 @@ public final class LocalSkins {
         return config.toString(2);
     }
 
+    /** Result codes of {@link #publishNow}, besides the HTTP codes of the skin service (200 stored, 400 not a valid skin, 403 name belongs to another phone). */
+    public static final int PUBLISH_ERROR = -1;
+    public static final int PUBLISH_OFF = -2;
+    public static final int PUBLISH_NO_SERVICE = -3;
+
+    public interface PublishCallback {
+        void done(int code);
+    }
+
     /**
      * Puts the player's skin on the BlockComet skin service so the other BlockComet players see it. Done in the background,
      * only when the skin changed, and only if the "Share my skin" switch is on. The name is claimed with a secret that
      * stays on this device: nobody else can replace the skin of that name.
      */
     private static void publish(String username, byte[] png) {
+        upload(username, png, false, null);
+    }
+
+    /** Uploads the skin right now (the player has just chosen it) and tells the callback how it went. */
+    public static void publishNow(String username, byte[] png, PublishCallback callback) {
+        upload(username, png, true, callback);
+    }
+
+    private static void upload(String username, byte[] png, boolean force, PublishCallback callback) {
         try {
-            if (SKINS_API.isEmpty()) return;
-            if (!git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_share_skin", true)) return;
+            if (SKINS_API.isEmpty()) {
+                if (callback != null) callback.done(PUBLISH_NO_SERVICE);
+                return;
+            }
+            if (!git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_share_skin", true)) {
+                if (callback != null) callback.done(PUBLISH_OFF);
+                return;
+            }
             final android.content.SharedPreferences prefs = AsyncAssetManager.getBundlePrefs();
             final String lower = username.toLowerCase(java.util.Locale.ROOT);
             final String hash = hex(java.security.MessageDigest.getInstance("SHA-256").digest(png));
             final String doneKey = "skin_published_" + lower;
-            if (hash.equals(prefs.getString(doneKey, null))) return;
+            if (!force && hash.equals(prefs.getString(doneKey, null))) return;
             final String tokenKey = "skin_token_" + lower;
             String token = prefs.getString(tokenKey, null);
             if (token == null) {
@@ -140,6 +164,7 @@ public final class LocalSkins {
             final String target = SKINS_API + "/skins/" + username + ".png";
             Thread thread = new Thread(() -> {
                 java.net.HttpURLConnection connection = null;
+                int code = PUBLISH_ERROR;
                 try {
                     connection = (java.net.HttpURLConnection) new java.net.URL(target).openConnection();
                     connection.setRequestMethod("PUT");
@@ -151,7 +176,7 @@ public final class LocalSkins {
                     try (java.io.OutputStream out = connection.getOutputStream()) {
                         out.write(png);
                     }
-                    int code = connection.getResponseCode();
+                    code = connection.getResponseCode();
                     if (code == 200) {
                         prefs.edit().putString(doneKey, hash).apply();
                         Log.i(TAG, "Skin of " + username + " published");
@@ -163,12 +188,73 @@ public final class LocalSkins {
                 } finally {
                     if (connection != null) connection.disconnect();
                 }
+                if (callback != null) callback.done(code);
             }, "BlockCometSkinPublish");
             thread.setDaemon(true);
             thread.start();
         } catch (Exception e) {
             Log.w(TAG, "Could not start publishing the skin", e);
+            if (callback != null) callback.done(PUBLISH_ERROR);
         }
+    }
+
+    /** True when a CustomSkinLoader jar (not switched off) is in the instance's mods folder. */
+    public static boolean hasSkinMod(Instance instance) {
+        File[] files = new File(instance.getGameDirectory(), "mods").listFiles();
+        if (files == null) return false;
+        for (File file : files) {
+            String name = file.getName().toLowerCase(java.util.Locale.ROOT);
+            if (name.startsWith("customskinloader") && name.endsWith(".jar")) return true;
+        }
+        return false;
+    }
+
+    /** Fabric instances without the skin mod (it only exists for Fabric). */
+    public static java.util.List<Instance> instancesWithoutSkinMod() {
+        java.util.List<Instance> missing = new java.util.ArrayList<>();
+        try {
+            for (Instance instance : git.artdeell.mojo.instances.Instances.loadAllInstances()) {
+                if (instance.versionId != null && instance.versionId.startsWith("fabric-loader") && !hasSkinMod(instance)) missing.add(instance);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not list the instances", e);
+        }
+        return missing;
+    }
+
+    /**
+     * The player agreed to install the skin mod: it goes into every Fabric instance, also where it was switched off or
+     * removed before. Returns how many instances have it afterwards.
+     */
+    public static int installSkinModEverywhere() {
+        int have = 0;
+        try {
+            final android.content.SharedPreferences prefs = AsyncAssetManager.getBundlePrefs();
+            final android.content.SharedPreferences.Editor edit = prefs.edit();
+            for (String key : new java.util.ArrayList<>(prefs.getAll().keySet())) {
+                if (key.startsWith("mod_") && key.contains("CustomSkinLoader")) edit.remove(key);
+            }
+            edit.commit();
+            for (Instance instance : git.artdeell.mojo.instances.Instances.loadAllInstances()) {
+                if (instance.versionId == null || !instance.versionId.startsWith("fabric-loader")) continue;
+                File mods = new File(instance.getGameDirectory(), "mods");
+                File[] files = mods.listFiles();
+                if (files != null) {
+                    for (File file : files) {
+                        String name = file.getName();
+                        if (name.startsWith("CustomSkinLoader") && name.endsWith(".jar.disabled")) {
+                            //noinspection ResultOfMethodCallIgnored
+                            file.renameTo(new File(mods, name.substring(0, name.length() - ".disabled".length())));
+                        }
+                    }
+                }
+                AsyncAssetManager.installSkinMod(instance);
+                if (hasSkinMod(instance)) have++;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not install the skin mod", e);
+        }
+        return have;
     }
 
     public static final int UNPUBLISH_OK = 0;
