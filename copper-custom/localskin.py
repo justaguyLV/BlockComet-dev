@@ -99,21 +99,27 @@ patch(os.path.join(java, "utils", "jre", "GameRunner.java"), [(
     "        JVersionList.Version versionInfo = Tools.getVersionInfo(versionId);")])
 
 # ---- Skin editor: "Delete my published skin" (local accounts only) -----------------------------------------------
-patch(os.path.join(res, "layout", "fragment_skin_editor.xml"), [(
-    '            android:text="@string/skin_editor_slim" />\n    </LinearLayout>',
-    '            android:text="@string/skin_editor_slim" />\n\n'
-    '        <com.google.android.material.button.MaterialButton\n'
-    '            android:id="@+id/skin_unpublish_button"\n'
-    '            style="?attr/materialButtonOutlinedStyle"\n'
-    '            android:layout_width="match_parent"\n'
-    '            android:layout_height="wrap_content"\n'
-    '            android:layout_margin="@dimen/_8sdp"\n'
-    '            android:text="@string/blockcomet_unpublish_button"\n'
-    '            android:visibility="gone" />\n'
-    '    </LinearLayout>')])
+# the editor has a portrait and a landscape layout: the button goes into both
+for layout_dir in ("layout", "layout-land"):
+    layout_file = os.path.join(res, layout_dir, "fragment_skin_editor.xml")
+    if not os.path.exists(layout_file):
+        continue
+    patch(layout_file, [(
+        '            android:text="@string/skin_editor_slim" />\n    </LinearLayout>',
+        '            android:text="@string/skin_editor_slim" />\n\n'
+        '        <com.google.android.material.button.MaterialButton\n'
+        '            android:id="@+id/skin_unpublish_button"\n'
+        '            style="?attr/materialButtonOutlinedStyle"\n'
+        '            android:layout_width="match_parent"\n'
+        '            android:layout_height="wrap_content"\n'
+        '            android:layout_margin="@dimen/_8sdp"\n'
+        '            android:text="@string/blockcomet_unpublish_button"\n'
+        '            android:visibility="gone" />\n'
+        '    </LinearLayout>')])
 patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
     ("        mSlimSwitch.setEnabled(false);\n        mSlimSwitch.setOnCheckedChangeListener((button, checked) -> {",
-     "        view.findViewById(R.id.skin_unpublish_button).setOnClickListener(v -> onUnpublishClicked());\n"
+     "        View unpublishView = view.findViewById(R.id.skin_unpublish_button);\n"
+     "        if (unpublishView != null) unpublishView.setOnClickListener(v -> onUnpublishClicked());\n"
      "        mSlimSwitch.setEnabled(false);\n        mSlimSwitch.setOnCheckedChangeListener((button, checked) -> {"),
     ("        if (result.account != null) mAccount = result.account;",
      "        if (result.account != null) mAccount = result.account;\n"
