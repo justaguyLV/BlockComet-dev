@@ -188,12 +188,14 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: EMU_LOCALE=ar-EG bash copper-custom/emulator-run.sh BlockComet.apk
+          script: |
+            EMU_LOCALE=ar-EG bash copper-custom/emulator-run.sh BlockComet.apk
+            bash copper-custom/emulator-skins.sh BlockComet.apk
 
       - name: Report
         if: always()
         run: |
-          for f in alive.txt game-files.txt device.txt; do
+          for f in alive.txt game-files.txt device.txt skins-result.txt skins-files.txt; do
             [ -f emulator-out/$f ] && { msg=$(head -c 3000 emulator-out/$f | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); echo "::notice title=emulator $f::$msg"; }
           done
           [ -f emulator-out/ui-log.txt ] && { msg=$(cut -c1-200 emulator-out/ui-log.txt | tail -n 45 | tail -c 3500 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}'); echo "::notice title=emulator ui-log::$msg"; }
@@ -209,4 +211,4 @@ jobs:
           ls -l emulator-out || exit 0
           gh release delete copper-test --yes --cleanup-tag || true
           gh release create copper-test emulator-out/* --prerelease --target "$GITHUB_SHA" \
-            --title "Launcher emulator run" --notes "Video, screenshots and logs from running the APK in an Android 11 x86_64 emulator."
+            --title "Launcher emulator run" --notes "Videos (launcher-run.mp4 and skins-demo.mp4: Local account, a typed name, skin editor), screenshots and logs from running the APK in an Android 11 x86_64 emulator. skins-result.txt lists what passed."

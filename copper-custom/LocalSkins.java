@@ -2,6 +2,9 @@ package git.artdeell.mojo.skins;
 
 import android.util.Log;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -12,18 +15,22 @@ import git.artdeell.mojo.instances.Instance;
 import git.artdeell.mojo.tasks.AsyncAssetManager;
 
 /**
- * BlockComet: skins for local (offline) accounts.
+ * BlockComet: skins for local (offline) accounts, prepared every time the game starts.
  *
- * 1. The skin the user chose in the skin editor is written where the CustomSkinLoader mod looks for local skins
- *    ({gameDir}/CustomSkinLoader/LocalSkin/skins/{name}.png): the player sees it on their own character.
- * 2. For every local account on a Fabric instance the mod is installed and the shared BlockComet skin registry is added
- *    to its sources (CustomSkinLoader "ExtraList"). The registry is a public GitHub folder with one PNG per player name,
- *    so every BlockComet player who published a skin there is seen with it by every other BlockComet player.
+ * 1. The skin chosen in the skin editor is copied to {gameDir}/CustomSkinLoader/LocalSkin/skins/{name}.png together with its
+ *    model (classic or slim), so the player sees it on their own character. If no skin is chosen, a copy left from an
+ *    earlier choice is removed.
+ * 2. The CustomSkinLoader mod is installed for every local account on a Fabric instance, and its configuration is written
+ *    by the launcher (not left to the mod's defaults): own skin first, then the shared BlockComet skin registry (one PNG
+ *    per player name in a public GitHub folder), then Mojang. A BlockComet player whose skin is in the registry is shown
+ *    with it to every other BlockComet player who plays on the same server.
  */
 public final class LocalSkins {
     /** {USERNAME} is replaced by CustomSkinLoader with the player name. */
     public static final String REGISTRY_SKIN_URL =
             "https://raw.githubusercontent.com/justaguyLV/blockcomet-skins/main/skins/{USERNAME}.png";
+
+    private static final String TAG = "LocalSkins";
 
     private LocalSkins() {}
 
@@ -34,31 +41,77 @@ public final class LocalSkins {
             if (!instance.versionId.startsWith("fabric-loader")) return;
 
             AsyncAssetManager.installSkinMod(instance);
-            writeRegistrySource(instance);
+
+            File root = new File(instance.getGameDirectory(), "CustomSkinLoader");
+            File skins = new File(root, "LocalSkin/skins");
+            //noinspection ResultOfMethodCallIgnored
+            skins.mkdirs();
+            File mine = new File(skins, account.username + ".png");
 
             SkinLibrary.Entry entry = SkinLibrary.find(SkinLibrary.getSelected(SkinLibrary.localKey(account.username)));
-            if (entry == null) return;
-            File dir = new File(instance.getGameDirectory(), "CustomSkinLoader/LocalSkin/skins");
-            //noinspection ResultOfMethodCallIgnored
-            dir.mkdirs();
-            byte[] png = SkinLibrary.readBytes(entry);
-            try (FileOutputStream out = new FileOutputStream(new File(dir, account.username + ".png"))) {
-                out.write(png);
+            boolean slim = false;
+            if (entry != null) {
+                slim = entry.slim;
+                write(mine, SkinLibrary.readBytes(entry));
+            } else if (mine.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                mine.delete();
             }
+
+            write(new File(root, "CustomSkinLoader.json"), buildConfig(slim).getBytes(StandardCharsets.UTF_8));
+            // An older build used ExtraList; the config above already holds the registry, so a leftover file must not add it twice
+            File old = new File(root, "ExtraList/blockcomet-skins.json");
+            if (old.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                old.delete();
+            }
+            Log.i(TAG, "Prepared skins for " + account.username + " (own skin: " + (entry != null) + ", slim: " + slim + ")");
         } catch (Exception e) {
-            Log.w("LocalSkins", "Could not prepare the local skin", e);
+            Log.w(TAG, "Could not prepare the local skin", e);
         }
     }
 
-    /** CustomSkinLoader reads this file at start, adds the source to its list once and deletes the file (a duplicate is ignored). */
-    private static void writeRegistrySource(Instance instance) throws java.io.IOException {
-        File dir = new File(instance.getGameDirectory(), "CustomSkinLoader/ExtraList");
-        //noinspection ResultOfMethodCallIgnored
-        dir.mkdirs();
-        String json = "{\"name\":\"BlockComet Skins\",\"type\":\"Legacy\",\"checkPNG\":true,\"model\":\"auto\","
-                + "\"skin\":\"" + REGISTRY_SKIN_URL + "\"}";
-        try (FileOutputStream out = new FileOutputStream(new File(dir, "blockcomet-skins.json"))) {
-            out.write(json.getBytes(StandardCharsets.UTF_8));
+    /** The CustomSkinLoader configuration: the order of the sources decides which skin wins. */
+    static String buildConfig(boolean slimOwnSkin) throws org.json.JSONException {
+        JSONObject own = new JSONObject();
+        own.put("name", "BlockComet Local");
+        own.put("type", "Legacy");
+        own.put("checkPNG", false);
+        own.put("model", slimOwnSkin ? "slim" : "default");
+        own.put("skin", "LocalSkin/skins/{USERNAME}.png");
+
+        JSONObject registry = new JSONObject();
+        registry.put("name", "BlockComet Skins");
+        registry.put("type", "Legacy");
+        registry.put("checkPNG", true);
+        registry.put("model", "auto");
+        registry.put("skin", REGISTRY_SKIN_URL);
+
+        JSONObject mojang = new JSONObject();
+        mojang.put("name", "Mojang");
+        mojang.put("type", "MojangAPI");
+
+        JSONObject config = new JSONObject();
+        config.put("enable", true);
+        config.put("loadlist", new JSONArray().put(own).put(registry).put(mojang));
+        config.put("enableDynamicSkull", true);
+        config.put("enableTransparentSkin", true);
+        config.put("forceIgnoreHttpsCertificate", false);
+        config.put("forceLoadAllTextures", false);
+        config.put("enableCape", true);
+        config.put("threadPoolSize", 4);
+        config.put("enableLogStdOut", false);
+        config.put("cacheExpiry", 30);
+        config.put("forceUpdateSkull", false);
+        config.put("enableLocalProfileCache", false);
+        config.put("enableCacheAutoClean", false);
+        config.put("forceDisableCache", false);
+        return config.toString(2);
+    }
+
+    private static void write(File file, byte[] data) throws java.io.IOException {
+        try (FileOutputStream out = new FileOutputStream(file)) {
+            out.write(data);
         }
     }
 }

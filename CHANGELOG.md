@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+* Removed the Horizon (Rust) button from the main menu.
+* Skins for local accounts: the launcher now writes the CustomSkinLoader configuration itself (own skin, then the shared
+  BlockComet skin registry, then Mojang), applies the classic/slim model of the chosen skin, and removes a stale skin file when
+  no skin is chosen any more.
+* The emulator test now also records a skin demo video (Local account, a typed name, the skin editor).
+
 ## 1.0.0 (first public release)
 
 * Copper Launcher base with BlockComet name, icon and blue/white theme; in-app About page with licenses and source link.
