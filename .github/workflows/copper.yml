@@ -75,6 +75,17 @@ jobs:
             exit 0
           fi
           npm install --no-save --silent wrangler@3
+          # the account needs a workers.dev subdomain; register one when it has none (a name is free for the first account that takes it)
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          SUB=$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$API" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('result') or {}).get('subdomain') or '')")
+          echo "workers.dev subdomain now: '${SUB}'"
+          if [ -z "$SUB" ]; then
+            for N in blockcomet blockcomet-skins "blockcomet-$(printf %s "$CLOUDFLARE_ACCOUNT_ID" | cut -c1-6)"; do
+              R=$(curl -s -X PUT -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" -d "{\"subdomain\":\"$N\"}" "$API")
+              echo "register $N: $(printf %s "$R" | cut -c1-300)"
+              printf %s "$R" | python3 -c "import sys,json; sys.exit(0 if json.load(sys.stdin).get('success') else 1)" && break
+            done
+          fi
           kv_id() { npx wrangler kv namespace list | python3 -c "import sys,json; print(next((n['id'] for n in json.load(sys.stdin) if n['title']=='blockcomet-skins-SKINS'), ''))"; }
           ID=$(kv_id)
           if [ -z "$ID" ]; then npx wrangler kv namespace create SKINS; ID=$(kv_id); fi
