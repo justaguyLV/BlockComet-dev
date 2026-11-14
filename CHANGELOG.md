@@ -6,6 +6,9 @@
 * Skins for local accounts: the launcher now writes the CustomSkinLoader configuration itself (own skin, then the shared
   BlockComet skin registry, then Mojang), applies the classic/slim model of the chosen skin, and removes a stale skin file when
   no skin is chosen any more.
+* Skin service: a small Cloudflare Worker (folder `skins-worker/`, free plan) stores one PNG per player name; the launcher publishes
+  the local player's skin there when a game starts (switch "Share my skin with other players", on by default) and every
+  BlockComet player's game asks it for the skins of the other players. A name belongs to the first device that published it.
 * The emulator test now also records a skin demo video (Local account, a typed name, the skin editor).
 
 ## 1.0.0 (first public release)

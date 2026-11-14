@@ -22,13 +22,16 @@ import git.artdeell.mojo.tasks.AsyncAssetManager;
  *    earlier choice is removed.
  * 2. The CustomSkinLoader mod is installed for every local account on a Fabric instance, and its configuration is written
  *    by the launcher (not left to the mod's defaults): own skin first, then the shared BlockComet skin registry (one PNG
- *    per player name in a public GitHub folder), then Mojang. A BlockComet player whose skin is in the registry is shown
- *    with it to every other BlockComet player who plays on the same server.
+ *    per player name, served by the BlockComet skin service on Cloudflare), then Mojang. The launcher publishes the
+ *    player's own skin there, so every other BlockComet player on the same server sees it.
  */
 public final class LocalSkins {
-    /** {USERNAME} is replaced by CustomSkinLoader with the player name. */
-    public static final String REGISTRY_SKIN_URL =
+    /** Base URL of the BlockComet skin service (Cloudflare Worker), without a trailing slash; empty when this build has none. */
+    private static final String SKINS_API = "@SKINS_API@".replaceAll("/+$", "");
+    /** Read-only fallback when the build has no skin service. {USERNAME} is replaced by CustomSkinLoader with the player name. */
+    private static final String GITHUB_SKIN_URL =
             "https://raw.githubusercontent.com/justaguyLV/blockcomet-skins/main/skins/{USERNAME}.png";
+    public static final String REGISTRY_SKIN_URL = SKINS_API.isEmpty() ? GITHUB_SKIN_URL : SKINS_API + "/skins/{USERNAME}.png";
 
     private static final String TAG = "LocalSkins";
 
@@ -52,7 +55,9 @@ public final class LocalSkins {
             boolean slim = false;
             if (entry != null) {
                 slim = entry.slim;
-                write(mine, SkinLibrary.readBytes(entry));
+                byte[] png = SkinLibrary.readBytes(entry);
+                write(mine, png);
+                publish(account.username, png);
             } else if (mine.exists()) {
                 //noinspection ResultOfMethodCallIgnored
                 mine.delete();
@@ -107,6 +112,69 @@ public final class LocalSkins {
         config.put("enableCacheAutoClean", false);
         config.put("forceDisableCache", false);
         return config.toString(2);
+    }
+
+    /**
+     * Puts the player's skin on the BlockComet skin service so the other BlockComet players see it. Done in the background,
+     * only when the skin changed, and only if the "Share my skin" switch is on. The name is claimed with a secret that
+     * stays on this device: nobody else can replace the skin of that name.
+     */
+    private static void publish(String username, byte[] png) {
+        try {
+            if (SKINS_API.isEmpty()) return;
+            if (!git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_share_skin", true)) return;
+            final android.content.SharedPreferences prefs = AsyncAssetManager.getBundlePrefs();
+            final String lower = username.toLowerCase(java.util.Locale.ROOT);
+            final String hash = hex(java.security.MessageDigest.getInstance("SHA-256").digest(png));
+            final String doneKey = "skin_published_" + lower;
+            if (hash.equals(prefs.getString(doneKey, null))) return;
+            final String tokenKey = "skin_token_" + lower;
+            String token = prefs.getString(tokenKey, null);
+            if (token == null) {
+                byte[] random = new byte[24];
+                new java.security.SecureRandom().nextBytes(random);
+                token = hex(random);
+                prefs.edit().putString(tokenKey, token).commit();
+            }
+            final String finalToken = token;
+            final String target = SKINS_API + "/skins/" + username + ".png";
+            Thread thread = new Thread(() -> {
+                java.net.HttpURLConnection connection = null;
+                try {
+                    connection = (java.net.HttpURLConnection) new java.net.URL(target).openConnection();
+                    connection.setRequestMethod("PUT");
+                    connection.setConnectTimeout(8000);
+                    connection.setReadTimeout(8000);
+                    connection.setDoOutput(true);
+                    connection.setRequestProperty("Content-Type", "image/png");
+                    connection.setRequestProperty("X-Skin-Token", finalToken);
+                    try (java.io.OutputStream out = connection.getOutputStream()) {
+                        out.write(png);
+                    }
+                    int code = connection.getResponseCode();
+                    if (code == 200) {
+                        prefs.edit().putString(doneKey, hash).apply();
+                        Log.i(TAG, "Skin of " + username + " published");
+                    } else {
+                        Log.w(TAG, "Skin of " + username + " not published, HTTP " + code);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Skin of " + username + " not published", e);
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+            }, "BlockCometSkinPublish");
+            thread.setDaemon(true);
+            thread.start();
+        } catch (Exception e) {
+            Log.w(TAG, "Could not start publishing the skin", e);
+        }
+    }
+
+    private static String hex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format(java.util.Locale.ROOT, "%02x", b));
+        return sb.toString();
     }
 
     private static void write(File file, byte[] data) throws java.io.IOException {

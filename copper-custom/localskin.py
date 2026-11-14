@@ -107,18 +107,28 @@ patch(os.path.join(res, "xml", "pref_misc.xml"), [(
     "        android:defaultValue=\"false\"\n"
     "        android:key=\"blockcomet_perf_mods\"\n"
     "        android:title=\"@string/blockcomet_perf_mods_title\"\n"
-    "        android:summary=\"@string/blockcomet_perf_mods_desc\" />")])
+    "        android:summary=\"@string/blockcomet_perf_mods_desc\" />\n"
+    "    <SwitchPreferenceCompat\n"
+    "        android:widgetLayout=\"@layout/preference_widget_material_switch\"\n"
+    "        android:defaultValue=\"true\"\n"
+    "        android:key=\"blockcomet_share_skin\"\n"
+    "        android:title=\"@string/blockcomet_share_skin_title\"\n"
+    "        android:summary=\"@string/blockcomet_share_skin_desc\" />")])
 
 en = '''<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="blockcomet_perf_mods_title">Download performance mods</string>
     <string name="blockcomet_perf_mods_desc">Add FerriteCore, Lithium, ModernFix, Krypton, Noisium, MemoryLeakFix and ScalableLux to the Meteor instances the next time a game starts. Off by default: nothing is added without your permission, and turning it off never removes mods you already have.</string>
+    <string name="blockcomet_share_skin_title">Share my skin with other players</string>
+    <string name="blockcomet_share_skin_desc">When you start a game with a local account, your chosen skin is published under your player name so other BlockComet players see it. Turn this off to keep your skin on this phone only.</string>
 </resources>
 '''
 ar = '''<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="blockcomet_perf_mods_title">تنزيل مودات الأداء</string>
     <string name="blockcomet_perf_mods_desc">يضيف FerriteCore وLithium وModernFix وKrypton وNoisium وMemoryLeakFix وScalableLux إلى نسخ Meteor عند تشغيل اللعبة المرة القادمة. معطّل افتراضيًا: لا يُضاف أي مود بدون إذنك، وإيقافه لا يحذف مودات موجودة عندك.</string>
+    <string name="blockcomet_share_skin_title">مشاركة سكني مع اللاعبين</string>
+    <string name="blockcomet_share_skin_desc">عند تشغيل لعبة بحساب محلي يُنشر السكن الذي اخترته باسم لاعبك ليراه لاعبو BlockComet الآخرون. أوقفه إن أردت إبقاء سكنك على هذا الجوال فقط.</string>
 </resources>
 '''
 os.makedirs(os.path.join(res, "values-ar"), exist_ok=True)

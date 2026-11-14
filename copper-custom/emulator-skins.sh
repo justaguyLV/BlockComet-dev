@@ -102,5 +102,6 @@ adb shell "pkill -2 screenrecord"; sleep 6
 adb pull /sdcard/skins.mp4 "$OUT/skins-demo.mp4" 2>&1 | tail -1
 adb logcat -d -v threadtime > "$OUT/skins-logcat-full.txt"
 grep -E "LocalSkins|AndroidRuntime|FATAL" "$OUT/skins-logcat-full.txt" | tail -n 60 > "$OUT/skins-logcat.txt"
+grep -h "LocalSkins" "$OUT/skins-logcat.txt" | sed 's/^.*LocalSkins: /INFO  launcher log: /' | tail -n 4 | tee -a "$RESULT"
 [ "$FAILED" = 0 ] && say "ALL CHECKS PASSED" || say "SOME CHECKS FAILED (see skins-ui-log.txt and the fail-*.png screenshots)"
 exit 0

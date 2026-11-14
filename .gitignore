@@ -8,3 +8,5 @@ out/
 copper/
 emulator-out/
 .DS_Store
+node_modules/
+.wrangler/
