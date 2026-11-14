@@ -561,6 +561,9 @@ python3 "$HERE/translate_ar.py" "$RES"
 # 12b. Skins for local accounts, and performance mods only when the user turns them on
 python3 "$HERE/localskin.py" "$RES" "$JAVA" "$HERE"
 
+# 12c. Horizon (Rust Minecraft, Starling on Android): a menu button that opens it, or its download page if it is not installed
+python3 "$HERE/horizon.py" "$RES" "$JAVA" "$MANIFEST"
+
 # 13. Right-to-left layouts (icons and text mirrored in Arabic instead of Arabic text inside a left-to-right layout)
 if ! grep -q 'android:supportsRtl' "$MANIFEST"; then
   sed -i '0,/<application/s//<application android:supportsRtl="true"/' "$MANIFEST"
