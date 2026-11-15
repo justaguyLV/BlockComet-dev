@@ -100,7 +100,7 @@ jobs:
           ID="$ID" python3 - <<'PY3' || echo "featured skins: the seeding step failed"
           import base64, json, os, subprocess, tempfile, time, urllib.request
           ID = os.environ["ID"]
-          names = [l.strip() for l in open("skins-worker/featured.txt", encoding="utf-8") if l.strip() and not l.startswith("#")]
+          names = [l.strip() for l in open("featured.txt", encoding="utf-8") if l.strip() and not l.startswith("#")]
           def wrangler(*args):
               return subprocess.run(["npx", "wrangler", "kv", "key", *args, "--namespace-id", ID], capture_output=True, text=True)
           def get(url):
