@@ -98,6 +98,11 @@ patch(os.path.join(java, "utils", "jre", "GameRunner.java"), [(
     "        git.artdeell.mojo.skins.LocalSkins.install(account, instance);\n"
     "        JVersionList.Version versionInfo = Tools.getVersionInfo(versionId);")])
 
+patch(os.path.join(java, "utils", "jre", "GameRunner.java"), [(
+    "        addNoBlocklistArgs(javaArgList);\n",
+    "        addNoBlocklistArgs(javaArgList);\n"
+    "        javaArgList.add(\"-Dcustomskinloader.ignorePatchFailure=true\"); // a skin mod that cannot patch this version must not crash the game\n")])
+
 # ---- Skin editor: "Delete my published skin" (local accounts only) -----------------------------------------------
 # the editor has a portrait and a landscape layout: the button goes into both
 for layout_dir in ("layout", "layout-land"):
@@ -151,6 +156,8 @@ patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
      "        final android.content.Context appContext = requireContext().getApplicationContext();\n"
      "        MojoApplication.sExecutorService.execute(() -> {\n"
      "            final java.util.List<git.artdeell.mojo.instances.Instance> missing = LocalSkins.instancesWithoutSkinMod();\n"
+     "            final String versions = LocalSkins.supportedVersionsText();\n"
+     "            final boolean anySupported = LocalSkins.anyInstanceSupportsSkins();\n"
      "            byte[] bytes = null;\n"
      "            try {\n"
      "                bytes = SkinLibrary.readBytes(entry);\n"
@@ -167,7 +174,7 @@ patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
      "                    }\n"
      "                    new MaterialAlertDialogBuilder(requireContext())\n"
      "                            .setTitle(R.string.blockcomet_skinmod_title)\n"
-     "                            .setMessage(getString(R.string.blockcomet_skinmod_message, names.toString()))\n"
+     "                            .setMessage(getString(R.string.blockcomet_skinmod_message, names.toString(), versions))\n"
      "                            .setPositiveButton(R.string.blockcomet_skinmod_install, (dialog, which) -> MojoApplication.sExecutorService.execute(() -> {\n"
      "                                final int have = LocalSkins.installSkinModEverywhere();\n"
      "                                mHandler.post(() -> android.widget.Toast.makeText(appContext,\n"
@@ -175,6 +182,12 @@ patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
      "                                        android.widget.Toast.LENGTH_LONG).show());\n"
      "                            }))\n"
      "                            .setNegativeButton(R.string.blockcomet_skinmod_later, null)\n"
+     "                            .show();\n"
+     "                } else if (!anySupported) {\n"
+     "                    new MaterialAlertDialogBuilder(requireContext())\n"
+     "                            .setTitle(R.string.blockcomet_skinwarn_title)\n"
+     "                            .setMessage(getString(R.string.blockcomet_skinwarn_message, versions))\n"
+     "                            .setPositiveButton(android.R.string.ok, null)\n"
      "                            .show();\n"
      "                }\n"
      "                if (png != null) publishChosenSkin(username, png, appContext);\n"
@@ -224,7 +237,9 @@ en = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_unpublish_none">No skin of this name was published from this phone.</string>
     <string name="blockcomet_unpublish_failed">Could not remove it. Check your connection and try again.</string>
     <string name="blockcomet_skinmod_title">Install the skin mod?</string>
-    <string name="blockcomet_skinmod_message">Skins are shown in the game by the CustomSkinLoader mod, and it is not installed in: %s. Install it now?</string>
+    <string name="blockcomet_skinmod_message">Skins are shown in the game by the CustomSkinLoader mod, and it is not installed in: %1$s. It works only in Fabric, Forge and NeoForge instances of Minecraft %2$s. Install it now?</string>
+    <string name="blockcomet_skinwarn_title">Skins will not show</string>
+    <string name="blockcomet_skinwarn_message">None of your instances can show custom skins. They work only in Fabric, Forge and NeoForge instances of Minecraft %s.</string>
     <string name="blockcomet_skinmod_install">Install</string>
     <string name="blockcomet_skinmod_later">Not now</string>
     <string name="blockcomet_skinmod_installed">Skin mod installed. Start the game to see your skin.</string>
@@ -247,7 +262,9 @@ ar = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_unpublish_none">لا يوجد سكن منشور بهذا الاسم من هذا الجوال.</string>
     <string name="blockcomet_unpublish_failed">تعذّر الحذف. تحقق من الاتصال وحاول مرة أخرى.</string>
     <string name="blockcomet_skinmod_title">تثبيت مود السكنات؟</string>
-    <string name="blockcomet_skinmod_message">السكنات تظهر في اللعبة عن طريق مود CustomSkinLoader، وهو غير مثبّت في: %s. هل تريد تثبيته الآن؟</string>
+    <string name="blockcomet_skinmod_message">السكنات تظهر في اللعبة عن طريق مود CustomSkinLoader، وهو غير مثبّت في: %1$s. يعمل فقط في نسخ Fabric وForge وNeoForge من ماينكرافت %2$s. هل تريد تثبيته الآن؟</string>
+    <string name="blockcomet_skinwarn_title">السكن لن يظهر</string>
+    <string name="blockcomet_skinwarn_message">لا توجد عندك نسخة تعرض السكنات المخصصة. تعمل فقط في نسخ Fabric وForge وNeoForge من ماينكرافت %s.</string>
     <string name="blockcomet_skinmod_install">تثبيت</string>
     <string name="blockcomet_skinmod_later">ليس الآن</string>
     <string name="blockcomet_skinmod_installed">تم تثبيت مود السكنات. شغّل اللعبة ليظهر سكنك.</string>

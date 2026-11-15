@@ -262,6 +262,40 @@ methods = '''    // ---- BlockComet: bundled Fabric versions and mods (assets/cu
         return i < 0 ? versionId : versionId.substring(i + 1);
     }
 
+    /** Minecraft version of an instance: the end of a Fabric version id; for Forge and NeoForge the "inheritsFrom" of its version JSON; otherwise the id itself. */
+    public static String gameVersionOf(git.artdeell.mojo.instances.Instance instance) {
+        String id = instance.versionId;
+        if (id.startsWith("fabric-loader")) return gameOf(id);
+        try {
+            File json = new File(Tools.DIR_HOME_VERSION, id + File.separator + id + ".json");
+            if (json.isFile()) {
+                byte[] data = new byte[(int) json.length()];
+                try (java.io.FileInputStream in = new java.io.FileInputStream(json)) {
+                    int off = 0;
+                    while (off < data.length) {
+                        int n = in.read(data, off, data.length - off);
+                        if (n < 0) break;
+                        off += n;
+                    }
+                }
+                com.google.gson.JsonObject object = new com.google.gson.Gson().fromJson(new String(data, java.nio.charset.StandardCharsets.UTF_8), com.google.gson.JsonObject.class);
+                if (object != null && object.has("inheritsFrom") && !object.get("inheritsFrom").isJsonNull()) return object.get("inheritsFrom").getAsString();
+            }
+        } catch (Exception ignored) {}
+        return id;
+    }
+
+    /** Minecraft versions the bundled skin mod covers (one folder per version in custom/skin). */
+    public static java.util.List<String> getSkinModGameVersions() {
+        java.util.List<String> games = new java.util.ArrayList<>();
+        if (sBundleContext == null) return games;
+        try {
+            String[] dirs = sBundleContext.getAssets().list("custom/skin");
+            if (dirs != null) games.addAll(java.util.Arrays.asList(dirs));
+        } catch (IOException ignored) {}
+        return games;
+    }
+
     public static android.content.SharedPreferences getBundlePrefs() {
         return sBundleContext.getSharedPreferences("blockcomet", Context.MODE_PRIVATE);
     }
@@ -301,7 +335,7 @@ methods = '''    // ---- BlockComet: bundled Fabric versions and mods (assets/cu
             android.content.SharedPreferences prefs = getBundlePrefs();
             android.content.SharedPreferences.Editor edit = prefs.edit();
             for (String kind : kinds) {
-                String folder = "custom/" + kind + "/" + gameOf(instance.versionId);
+                String folder = "custom/" + kind + "/" + gameVersionOf(instance);
                 String[] mods = ctx.getAssets().list(folder);
                 if (mods == null) continue;
                 for (String mod : mods) {

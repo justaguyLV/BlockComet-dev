@@ -41,7 +41,7 @@ public final class LocalSkins {
         try {
             if (account == null || instance == null || instance.versionId == null) return;
             if (account.authType != AuthType.LOCAL || account.username == null) return;
-            if (!instance.versionId.startsWith("fabric-loader")) return;
+            if (loaderOf(instance) == null) return;
 
             AsyncAssetManager.installSkinMod(instance);
 
@@ -198,6 +198,39 @@ public final class LocalSkins {
         }
     }
 
+    /** "fabric", "forge" or "neoforge"; null for vanilla and other loaders, where CustomSkinLoader has no way in. */
+    public static String loaderOf(Instance instance) {
+        if (instance == null || instance.versionId == null) return null;
+        String id = instance.versionId.toLowerCase(java.util.Locale.ROOT);
+        if (id.startsWith("fabric-loader")) return "fabric";
+        if (id.contains("neoforge")) return "neoforge";
+        if (id.contains("forge")) return "forge";
+        return null;
+    }
+
+    /** True when the bundled skin mod fits this instance: a supported loader and a Minecraft version it covers. */
+    public static boolean supportsSkinMod(Instance instance) {
+        if (loaderOf(instance) == null) return false;
+        return AsyncAssetManager.getSkinModGameVersions().contains(AsyncAssetManager.gameVersionOf(instance));
+    }
+
+    /** True when at least one instance can show custom skins. */
+    public static boolean anyInstanceSupportsSkins() {
+        try {
+            for (Instance instance : git.artdeell.mojo.instances.Instances.loadAllInstances()) {
+                if (supportsSkinMod(instance)) return true;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not list the instances", e);
+        }
+        return false;
+    }
+
+    /** "1.20.1, 1.20.2, ..." for the warning texts. */
+    public static String supportedVersionsText() {
+        return android.text.TextUtils.join(", ", AsyncAssetManager.getSkinModGameVersions());
+    }
+
     /** True when a CustomSkinLoader jar (not switched off) is in the instance's mods folder. */
     public static boolean hasSkinMod(Instance instance) {
         File[] files = new File(instance.getGameDirectory(), "mods").listFiles();
@@ -214,7 +247,7 @@ public final class LocalSkins {
         java.util.List<Instance> missing = new java.util.ArrayList<>();
         try {
             for (Instance instance : git.artdeell.mojo.instances.Instances.loadAllInstances()) {
-                if (instance.versionId != null && instance.versionId.startsWith("fabric-loader") && !hasSkinMod(instance)) missing.add(instance);
+                if (supportsSkinMod(instance) && !hasSkinMod(instance)) missing.add(instance);
             }
         } catch (Exception e) {
             Log.w(TAG, "Could not list the instances", e);
@@ -236,7 +269,7 @@ public final class LocalSkins {
             }
             edit.commit();
             for (Instance instance : git.artdeell.mojo.instances.Instances.loadAllInstances()) {
-                if (instance.versionId == null || !instance.versionId.startsWith("fabric-loader")) continue;
+                if (!supportsSkinMod(instance)) continue;
                 File mods = new File(instance.getGameDirectory(), "mods");
                 File[] files = mods.listFiles();
                 if (files != null) {
