@@ -603,6 +603,9 @@ python3 "$HERE/localskin.py" "$RES" "$JAVA" "$HERE"
 # The skin service (Cloudflare Worker) the workflow deployed; without it the build only reads the GitHub skin folder
 sed -i "s|@SKINS_API@|${BLOCKCOMET_SKINS_API:-}|" "$JAVA/skins/LocalSkins.java"
 
+# 12c. A fourth kind of content in the browser: worlds from CurseForge
+python3 "$HERE/worlds.py" "$RES" "$JAVA" "$HERE"
+
 # 13. Right-to-left layouts (icons and text mirrored in Arabic instead of Arabic text inside a left-to-right layout)
 if ! grep -q 'android:supportsRtl' "$MANIFEST"; then
   sed -i '0,/<application/s//<application android:supportsRtl="true"/' "$MANIFEST"
