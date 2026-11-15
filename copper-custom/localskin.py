@@ -23,6 +23,9 @@ def patch(path, pairs):
 
 # ---- LocalSkins helper -------------------------------------------------------------------------------------------
 shutil.copy(os.path.join(here, "LocalSkins.java"), os.path.join(java, "skins", "LocalSkins.java"))
+shutil.copy(os.path.join(here, "SkinGalleryFragment.java"), os.path.join(java, "skins", "SkinGalleryFragment.java"))
+for layout_name in ("fragment_skin_gallery.xml", "item_gallery_skin.xml"):
+    shutil.copy(os.path.join(here, layout_name), os.path.join(res, "layout", layout_name))
 
 # ---- SkinLibrary: separate selection per local account name ------------------------------------------------------
 patch(os.path.join(java, "skins", "SkinLibrary.java"), [(
@@ -209,6 +212,28 @@ patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
      "    /** BlockComet: removes the skin this local player published for the other players. */"),
 ])
 
+# ---- Skin gallery: a button in the editor opens the gallery page ------------------------------------------------------
+for layout_dir in ("layout", "layout-land"):
+    layout_file = os.path.join(res, layout_dir, "fragment_skin_editor.xml")
+    if not os.path.exists(layout_file):
+        continue
+    patch(layout_file, [(
+        '<com.google.android.material.progressindicator.LinearProgressIndicator',
+        '<com.google.android.material.button.MaterialButton\n'
+        '            android:id="@+id/skin_gallery_button"\n'
+        '            style="?attr/materialButtonOutlinedStyle"\n'
+        '            android:layout_width="match_parent"\n'
+        '            android:layout_height="wrap_content"\n'
+        '            android:layout_marginTop="@dimen/_4sdp"\n'
+        '            android:text="@string/blockcomet_gallery_button" />\n\n'
+        '    <com.google.android.material.progressindicator.LinearProgressIndicator')])
+patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
+    ("        View unpublishView = view.findViewById(R.id.skin_unpublish_button);\n",
+     "        View galleryView = view.findViewById(R.id.skin_gallery_button);\n"
+     "        if (galleryView != null) galleryView.setOnClickListener(v ->\n"
+     "                Tools.swapFragmentFullScreen(requireActivity(), SkinGalleryFragment.class, SkinGalleryFragment.TAG, null));\n"
+     "        View unpublishView = view.findViewById(R.id.skin_unpublish_button);\n")])
+
 # ---- Settings switch + texts ---------------------------------------------------------------------------------------
 patch(os.path.join(res, "xml", "pref_misc.xml"), [(
     "<git.artdeell.mojo.prefs.BackButtonPreference />",
@@ -240,6 +265,16 @@ en = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_share_skin_desc">When you start a game with a local account, your chosen skin is published under your player name so other BlockComet players see it. Turn this off to keep your skin on this phone only.</string>
     <string name="blockcomet_list_skin_title">Show my skin in the gallery</string>
     <string name="blockcomet_list_skin_desc">Lets other players find your published skin by searching your player name in the skin gallery. Off by default. Needs \"Share my skin\" to be on.</string>
+    <string name="blockcomet_gallery_button">Skin gallery</string>
+    <string name="blockcomet_gallery_search_hint">Search a player name</string>
+    <string name="blockcomet_gallery_search">Search</string>
+    <string name="blockcomet_gallery_empty">No skins found. Only skins whose owners chose to show them in the gallery appear here.</string>
+    <string name="blockcomet_gallery_error">Could not load the gallery. Check your connection and try again.</string>
+    <string name="blockcomet_gallery_no_service">This build has no skin service, so there is no gallery.</string>
+    <string name="blockcomet_gallery_add">Add to my skins</string>
+    <string name="blockcomet_gallery_added">Added to your skins.</string>
+    <string name="blockcomet_gallery_bad_name">Names use letters, numbers and _ only, up to 16.</string>
+    <string name="blockcomet_gallery_load_failed">Could not download this skin.</string>
     <string name="blockcomet_unpublish_button">Delete my published skin</string>
     <string name="blockcomet_unpublish_done">Your skin was removed for other players. Choose another skin and it is published the next time a game starts.</string>
     <string name="blockcomet_unpublish_none">No skin of this name was published from this phone.</string>
@@ -267,6 +302,16 @@ ar = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_share_skin_desc">عند تشغيل لعبة بحساب محلي يُنشر السكن الذي اخترته باسم لاعبك ليراه لاعبو BlockComet الآخرون. أوقفه إن أردت إبقاء سكنك على هذا الجوال فقط.</string>
     <string name="blockcomet_list_skin_title">إظهار سكني في المعرض</string>
     <string name="blockcomet_list_skin_desc">يسمح للاعبين بالعثور على سكنك المنشور في معرض السكنات عند البحث عن اسمك. مطفأ افتراضياً، ويحتاج تفعيل «مشاركة سكني».</string>
+    <string name="blockcomet_gallery_button">معرض السكنات</string>
+    <string name="blockcomet_gallery_search_hint">ابحث عن اسم لاعب</string>
+    <string name="blockcomet_gallery_search">بحث</string>
+    <string name="blockcomet_gallery_empty">لا توجد سكنات. تظهر هنا فقط السكنات التي اختار أصحابها إظهارها في المعرض.</string>
+    <string name="blockcomet_gallery_error">تعذّر تحميل المعرض. تحقق من الاتصال وحاول مرة أخرى.</string>
+    <string name="blockcomet_gallery_no_service">هذا الإصدار بلا خادم سكنات، فلا يوجد معرض.</string>
+    <string name="blockcomet_gallery_add">إضافة إلى سكناتي</string>
+    <string name="blockcomet_gallery_added">تمت الإضافة إلى سكناتك.</string>
+    <string name="blockcomet_gallery_bad_name">الأسماء حروف وأرقام و _ فقط، حتى 16 حرفاً.</string>
+    <string name="blockcomet_gallery_load_failed">تعذّر تنزيل هذا السكن.</string>
     <string name="blockcomet_unpublish_button">حذف سكني المنشور</string>
     <string name="blockcomet_unpublish_done">تم حذف سكنك عند اللاعبين. اختر سكنًا آخر وسيُنشر عند تشغيل اللعبة المرة القادمة.</string>
     <string name="blockcomet_unpublish_none">لا يوجد سكن منشور بهذا الاسم من هذا الجوال.</string>

@@ -114,6 +114,11 @@ public final class LocalSkins {
         return config.toString(2);
     }
 
+    /** Address of the BlockComet skin service, empty when this build has none. */
+    public static String skinsApi() {
+        return SKINS_API;
+    }
+
     /** Result codes of {@link #publishNow}, besides the HTTP codes of the skin service (200 stored, 400 not a valid skin, 403 name belongs to another phone). */
     public static final int PUBLISH_ERROR = -1;
     public static final int PUBLISH_OFF = -2;
