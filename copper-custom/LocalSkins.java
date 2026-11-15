@@ -123,6 +123,7 @@ public final class LocalSkins {
     public static final int PUBLISH_ERROR = -1;
     public static final int PUBLISH_OFF = -2;
     public static final int PUBLISH_NO_SERVICE = -3;
+    public static final int PUBLISH_NOTHING = -4;
 
     public interface PublishCallback {
         void done(int code);
@@ -130,37 +131,34 @@ public final class LocalSkins {
 
     /**
      * Puts the player's skin on the BlockComet skin service so the other BlockComet players see it. Done in the background,
-     * only when the skin changed, and only if the "Share my skin" switch is on. The name is claimed with a secret that
+     * only when the skin changed. The name is claimed with a secret that
      * stays on this device: nobody else can replace the skin of that name.
      */
     private static void publish(String username, byte[] png) {
-        upload(username, png, false, null);
+        upload(username, png, false, null, null);
     }
 
-    /** Uploads the skin right now (the player has just chosen it) and tells the callback how it went. */
+    /** Uploads the skin right now (the player has just chosen it) and tells the callback how it went. The gallery listing stays as it is. */
     public static void publishNow(String username, byte[] png, PublishCallback callback) {
-        upload(username, png, true, callback);
+        upload(username, png, true, null, callback);
     }
 
-    private static void upload(String username, byte[] png, boolean force, PublishCallback callback) {
+    /** Uploads the skin right now and shows it in the gallery (listed = true) or hides it there (false). */
+    public static void publishListed(String username, byte[] png, boolean listed, PublishCallback callback) {
+        upload(username, png, true, listed, callback);
+    }
+
+    private static void upload(String username, byte[] png, boolean force, Boolean listed, PublishCallback callback) {
         try {
             if (SKINS_API.isEmpty()) {
                 if (callback != null) callback.done(PUBLISH_NO_SERVICE);
-                return;
-            }
-            if (!git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_share_skin", true)) {
-                if (callback != null) callback.done(PUBLISH_OFF);
                 return;
             }
             final android.content.SharedPreferences prefs = AsyncAssetManager.getBundlePrefs();
             final String lower = username.toLowerCase(java.util.Locale.ROOT);
             final String hash = hex(java.security.MessageDigest.getInstance("SHA-256").digest(png));
             final String doneKey = "skin_published_" + lower;
-            if (!force && hash.equals(prefs.getString(doneKey, null))) {
-                syncListing(username, lower, prefs);
-                return;
-            }
-            final boolean listed = git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_list_skin", false);
+            if (!force && hash.equals(prefs.getString(doneKey, null))) return;
             final String tokenKey = "skin_token_" + lower;
             String token = prefs.getString(tokenKey, null);
             if (token == null) {
@@ -182,13 +180,14 @@ public final class LocalSkins {
                     connection.setDoOutput(true);
                     connection.setRequestProperty("Content-Type", "image/png");
                     connection.setRequestProperty("X-Skin-Token", finalToken);
-                    connection.setRequestProperty("X-Skin-Listed", listed ? "1" : "0");
+                    // without this header the service keeps whatever listing the skin had
+                    if (listed != null) connection.setRequestProperty("X-Skin-Listed", listed ? "1" : "0");
                     try (java.io.OutputStream out = connection.getOutputStream()) {
                         out.write(png);
                     }
                     code = connection.getResponseCode();
                     if (code == 200) {
-                        prefs.edit().putString(doneKey, hash).putBoolean("skin_listed_" + lower, listed).apply();
+                        prefs.edit().putString(doneKey, hash).apply();
                         Log.i(TAG, "Skin of " + username + " published");
                     } else {
                         Log.w(TAG, "Skin of " + username + " not published, HTTP " + code);
@@ -206,6 +205,40 @@ public final class LocalSkins {
             Log.w(TAG, "Could not start publishing the skin", e);
             if (callback != null) callback.done(PUBLISH_ERROR);
         }
+    }
+
+    /** Shows (true) or hides (false) the skin this player published in the gallery, without uploading it again. */
+    public static void setListed(String username, boolean listed, PublishCallback callback) {
+        Thread thread = new Thread(() -> {
+            int code = PUBLISH_ERROR;
+            java.net.HttpURLConnection connection = null;
+            try {
+                final android.content.SharedPreferences prefs = AsyncAssetManager.getBundlePrefs();
+                final String token = prefs.getString("skin_token_" + username.toLowerCase(java.util.Locale.ROOT), null);
+                if (SKINS_API.isEmpty()) {
+                    code = PUBLISH_NO_SERVICE;
+                } else if (token == null) {
+                    code = PUBLISH_NOTHING;
+                } else {
+                    connection = (java.net.HttpURLConnection) new java.net.URL(SKINS_API + "/skins/" + username + ".png").openConnection();
+                    connection.setRequestMethod("POST"); // the service treats POST like PATCH; HttpURLConnection cannot send PATCH
+                    connection.setConnectTimeout(8000);
+                    connection.setReadTimeout(8000);
+                    connection.setRequestProperty("X-Skin-Token", token);
+                    connection.setRequestProperty("X-Skin-Listed", listed ? "1" : "0");
+                    code = connection.getResponseCode();
+                    if (code == 404) code = PUBLISH_NOTHING;
+                    Log.i(TAG, "Gallery listing of " + username + " set to " + listed + ", HTTP " + code);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not update the gallery listing", e);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            if (callback != null) callback.done(code);
+        }, "BlockCometSkinListing");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     /** "fabric", "forge" or "neoforge"; null for vanilla and other loaders, where CustomSkinLoader has no way in. */
@@ -239,40 +272,6 @@ public final class LocalSkins {
     /** "1.20.1, 1.20.2, ..." for the warning texts. */
     public static String supportedVersionsText() {
         return android.text.TextUtils.join(", ", AsyncAssetManager.getSkinModGameVersions());
-    }
-
-    /** The skin did not change, but the player may have switched "Show my skin in the gallery": tell the service without uploading again. */
-    private static void syncListing(String username, String lower, android.content.SharedPreferences prefs) {
-        try {
-            final String token = prefs.getString("skin_token_" + lower, null);
-            if (token == null) return;
-            final boolean listed = git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_list_skin", false);
-            final String listedKey = "skin_listed_" + lower;
-            if (prefs.contains(listedKey) && prefs.getBoolean(listedKey, false) == listed) return;
-            final String target = SKINS_API + "/skins/" + username + ".png";
-            Thread thread = new Thread(() -> {
-                java.net.HttpURLConnection connection = null;
-                try {
-                    connection = (java.net.HttpURLConnection) new java.net.URL(target).openConnection();
-                    connection.setRequestMethod("POST"); // the service treats POST like PATCH; HttpURLConnection cannot send PATCH
-                    connection.setConnectTimeout(8000);
-                    connection.setReadTimeout(8000);
-                    connection.setRequestProperty("X-Skin-Token", token);
-                    connection.setRequestProperty("X-Skin-Listed", listed ? "1" : "0");
-                    int code = connection.getResponseCode();
-                    if (code == 200) prefs.edit().putBoolean(listedKey, listed).apply();
-                    Log.i(TAG, "Gallery listing of " + username + " set to " + listed + ", HTTP " + code);
-                } catch (Exception e) {
-                    Log.w(TAG, "Could not update the gallery listing", e);
-                } finally {
-                    if (connection != null) connection.disconnect();
-                }
-            }, "BlockCometSkinListing");
-            thread.setDaemon(true);
-            thread.start();
-        } catch (Exception e) {
-            Log.w(TAG, "Could not start the gallery listing update", e);
-        }
     }
 
     /** True when a CustomSkinLoader jar (not switched off) is in the instance's mods folder. */

@@ -4,6 +4,7 @@
 //   DELETE /skins/<name>.png  remove the skin (same token); the name is free to claim again afterwards
 //   PATCH /skins/<name>.png (or POST, for clients that cannot send PATCH)   show or hide the skin in the gallery without uploading it again: header X-Skin-Listed = 1 or 0 (same token)
 //   GET /gallery?q=<start of a name>&cursor=<from the last page>&limit=<1-40>   the skins whose owners chose to list them (JSON)
+//   GET /featured/<n>.png   a featured skin (put there by the deploy from featured.txt, not by players; separate from the player skins)
 // A name belongs to whoever published it first (the token's hash is stored); only the same token can replace the skin.
 // A skin is in the gallery only when its owner asked for it (X-Skin-Listed: 1); the default is hidden.
 const NAME = /^[A-Za-z0-9_]{3,16}$/;
@@ -17,8 +18,9 @@ const text = (body, status = 200, extra = {}) => new Response(body, { status, he
 
 const json = (data, extra = {}) => new Response(JSON.stringify(data), { headers: { "content-type": "application/json; charset=utf-8", ...CORS, ...extra } });
 
-// One page of the gallery: the listed skins whose name starts with q. KV lists keys alphabetically, a few at a time;
-// a page that came back short still carries a cursor, so the caller asks again until the cursor is null.
+// One page of the gallery: first the featured skins, then the listed player skins, both filtered by the start of the name.
+// The cursor says where we are: "f<kv cursor>" in the featured list, "s<kv cursor>" in the player list; none = the very start.
+// KV lists keys alphabetically, a few at a time; a short page still carries a cursor, so the caller asks again until it is null.
 async function gallery(url, env, ctx, req) {
   const cache = caches.default;
   const hit = await cache.match(req);
@@ -26,18 +28,26 @@ async function gallery(url, env, ctx, req) {
   const q = (url.searchParams.get("q") || "").toLowerCase();
   if (q && !/^[a-z0-9_]{1,16}$/.test(q)) return json({ skins: [], cursor: null });
   const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "24", 10) || 24, 1), GALLERY_MAX);
-  let cursor = url.searchParams.get("cursor") || undefined;
+  const raw = url.searchParams.get("cursor") || "";
+  let phase = raw.startsWith("s") ? "s" : "f";
+  let cursor = raw.slice(1) || undefined;
   const skins = [];
-  let complete = false;
-  for (let round = 0; round < GALLERY_ROUNDS && !complete && skins.length < limit; round++) {
-    const page = await env.SKINS.list({ prefix: "skin:" + q, cursor, limit });
+  let finished = false;
+  for (let round = 0; round < GALLERY_ROUNDS && !finished && skins.length < limit; round++) {
+    const prefix = (phase === "f" ? "featured:" : "skin:") + q;
+    const page = await env.SKINS.list({ prefix, cursor, limit });
     for (const k of page.keys) {
-      if (k.metadata && k.metadata.listed) skins.push({ name: k.metadata.name || k.name.slice(5), t: k.metadata.t || 0 });
+      const meta = k.metadata || {};
+      if (phase === "f") skins.push({ name: meta.name || k.name.slice(9), t: meta.t || 0, featured: true });
+      else if (meta.listed) skins.push({ name: meta.name || k.name.slice(5), t: meta.t || 0, featured: false });
     }
-    complete = page.list_complete;
-    cursor = complete ? undefined : page.cursor;
+    if (page.list_complete) {
+      if (phase === "f") { phase = "s"; cursor = undefined; } else finished = true;
+    } else {
+      cursor = page.cursor;
+    }
   }
-  const res = json({ skins, cursor: complete ? null : cursor || null }, { "cache-control": "public, max-age=120" });
+  const res = json({ skins, cursor: finished ? null : phase + (cursor || "") }, { "cache-control": "public, max-age=120" });
   ctx.waitUntil(cache.put(req, res.clone()));
   return res;
 }
@@ -63,6 +73,12 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (url.pathname === "/") return text("BlockComet skin registry");
     if (url.pathname === "/gallery") return req.method === "GET" ? gallery(url, env, ctx, req) : text("method not allowed", 405, { allow: "GET, OPTIONS" });
+    const f = url.pathname.match(/^\/featured\/([A-Za-z0-9_]+?)(?:\.png)?$/);
+    if (f && NAME.test(f[1]) && (req.method === "GET" || req.method === "HEAD")) {
+      const { value } = await env.SKINS.getWithMetadata("featured:" + f[1].toLowerCase(), { type: "arrayBuffer" });
+      if (!value) return text("no skin", 404, { "cache-control": "public, max-age=60" });
+      return new Response(req.method === "HEAD" ? null : value, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600", ...CORS } });
+    }
     const m = url.pathname.match(/^\/skins\/([A-Za-z0-9_]+?)(?:\.png)?$/);
     if (!m || !NAME.test(m[1])) return text("not found", 404);
     const key = "skin:" + m[1].toLowerCase();

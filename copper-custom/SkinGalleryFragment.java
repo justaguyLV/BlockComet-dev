@@ -33,6 +33,9 @@ import com.google.gson.JsonObject;
 
 import git.artdeell.mojo.MojoApplication;
 import git.artdeell.mojo.R;
+import git.artdeell.mojo.authenticator.AuthType;
+import git.artdeell.mojo.authenticator.accounts.Account;
+import git.artdeell.mojo.authenticator.accounts.Accounts;
 import git.artdeell.mojo.authenticator.accounts.SkinHeadRenderer;
 
 import java.io.ByteArrayOutputStream;
@@ -53,6 +56,8 @@ import java.util.regex.Pattern;
  */
 public class SkinGalleryFragment extends Fragment {
     public static final String TAG = "SkinGalleryFragment";
+    /** Which account the gallery was opened for: the file name the skin editor uses. */
+    public static final String ARG_ACCOUNT_FILE = "account_file";
 
     private static final int PAGE = 24;
     private static final int GRID_TILE_DP = 100;
@@ -61,7 +66,22 @@ public class SkinGalleryFragment extends Fragment {
     private static final Pattern QUERY = Pattern.compile("[A-Za-z0-9_]{0,16}");
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final List<String> mNames = new ArrayList<>();
+    /** One tile: featured skins come from the service itself, the others from players who added theirs. */
+    private static final class Item {
+        final String name;
+        final boolean featured;
+
+        Item(String name, boolean featured) {
+            this.name = name;
+            this.featured = featured;
+        }
+
+        String key() {
+            return (featured ? "f:" : "s:") + name;
+        }
+    }
+
+    private final List<Item> mItems = new ArrayList<>();
     private final Set<String> mThumbsLoading = new HashSet<>();
     private final LruCache<String, Bitmap> mThumbs = new LruCache<String, Bitmap>(12 * 1024 * 1024) {
         @Override
@@ -109,11 +129,13 @@ public class SkinGalleryFragment extends Fragment {
             @Override
             public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
                 if (dy <= 0) return;
-                if (mLayoutManager.findLastVisibleItemPosition() >= mNames.size() - 6) loadPage();
+                if (mLayoutManager.findLastVisibleItemPosition() >= mItems.size() - 6) loadPage();
             }
         });
 
         view.findViewById(R.id.gallery_search_button).setOnClickListener(v -> startSearch());
+        view.findViewById(R.id.gallery_add_button).setOnClickListener(v -> addMySkin());
+        view.findViewById(R.id.gallery_remove_button).setOnClickListener(v -> removeMySkin());
         mSearch.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_DONE
                     || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
@@ -151,7 +173,7 @@ public class SkinGalleryFragment extends Fragment {
 
     private void resetAndLoad() {
         mGeneration++;
-        mNames.clear();
+        mItems.clear();
         mCursor = null;
         mHasMore = true;
         mLoading = false;
@@ -175,7 +197,7 @@ public class SkinGalleryFragment extends Fragment {
         mLoading = true;
         mProgress.setVisibility(View.VISIBLE);
         MojoApplication.sExecutorService.execute(() -> {
-            final List<String> got = new ArrayList<>();
+            final List<Item> got = new ArrayList<>();
             String next = null;
             Throwable error = null;
             try {
@@ -185,7 +207,9 @@ public class SkinGalleryFragment extends Fragment {
                 String body = new String(download(url, MAX_JSON_BYTES), StandardCharsets.UTF_8);
                 JsonObject root = new Gson().fromJson(body, JsonObject.class);
                 for (JsonElement element : root.getAsJsonArray("skins")) {
-                    got.add(element.getAsJsonObject().get("name").getAsString());
+                    JsonObject entry = element.getAsJsonObject();
+                    JsonElement featured = entry.get("featured");
+                    got.add(new Item(entry.get("name").getAsString(), featured != null && !featured.isJsonNull() && featured.getAsBoolean()));
                 }
                 JsonElement c = root.get("cursor");
                 next = (c == null || c.isJsonNull()) ? null : c.getAsString();
@@ -202,12 +226,12 @@ public class SkinGalleryFragment extends Fragment {
                     mHasMore = false;
                     mStatusText = R.string.blockcomet_gallery_error;
                 } else {
-                    int start = mNames.size();
-                    mNames.addAll(got);
+                    int start = mItems.size();
+                    mItems.addAll(got);
                     mAdapter.notifyItemRangeInserted(start, got.size());
                     mCursor = finalNext;
                     mHasMore = finalNext != null;
-                    mStatusText = mNames.isEmpty() ? R.string.blockcomet_gallery_empty : 0;
+                    mStatusText = mItems.isEmpty() ? R.string.blockcomet_gallery_empty : 0;
                 }
                 showStatus();
                 // a short page with more behind it: go on until the screen is full
@@ -229,15 +253,16 @@ public class SkinGalleryFragment extends Fragment {
 
     // ------------------------------------------------------------------ thumbnails and preview
 
-    private Bitmap thumb(@NonNull String name) {
-        Bitmap cached = mThumbs.get(name);
+    private Bitmap thumb(@NonNull Item item) {
+        final String key = item.key();
+        Bitmap cached = mThumbs.get(key);
         if (cached != null) return cached;
-        if (!mThumbsLoading.add(name)) return null;
+        if (!mThumbsLoading.add(key)) return null;
         final int generation = mGeneration;
         MojoApplication.sExecutorService.execute(() -> {
             Bitmap head = null;
             try {
-                byte[] data = download(skinUrl(name), MAX_SKIN_BYTES);
+                byte[] data = download(skinUrl(item), MAX_SKIN_BYTES);
                 Bitmap raw = BitmapFactory.decodeByteArray(data, 0, data.length);
                 if (raw != null) {
                     if (SkinTextures.isValidSkinSize(raw.getWidth(), raw.getHeight())) {
@@ -252,23 +277,23 @@ public class SkinGalleryFragment extends Fragment {
             }
             final Bitmap result = head;
             runIfAttached(() -> {
-                mThumbsLoading.remove(name);
+                mThumbsLoading.remove(key);
                 if (result == null) return;
-                mThumbs.put(name, result);
-                int index = mNames.indexOf(name);
+                mThumbs.put(key, result);
+                int index = indexOfKey(key);
                 if (index >= 0 && generation == mGeneration) mAdapter.notifyItemChanged(index);
             });
         });
         return null;
     }
 
-    private void openSkin(@NonNull String name) {
+    private void openSkin(@NonNull Item item) {
         mProgress.setVisibility(View.VISIBLE);
         MojoApplication.sExecutorService.execute(() -> {
             byte[] data = null;
             Bitmap bitmap = null;
             try {
-                data = download(skinUrl(name), MAX_SKIN_BYTES);
+                data = download(skinUrl(item), MAX_SKIN_BYTES);
                 bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
                 if (bitmap != null && !SkinTextures.isValidSkinSize(bitmap.getWidth(), bitmap.getHeight())) bitmap = null;
             } catch (Exception ignored) {
@@ -282,7 +307,7 @@ public class SkinGalleryFragment extends Fragment {
                     Toast.makeText(requireContext(), R.string.blockcomet_gallery_load_failed, Toast.LENGTH_LONG).show();
                     return;
                 }
-                showPreview(name, finalData, finalBitmap);
+                showPreview(item.name, finalData, finalBitmap);
             });
         });
     }
@@ -317,10 +342,88 @@ public class SkinGalleryFragment extends Fragment {
         });
     }
 
+    // ------------------------------------------------------------------ my own skin
+
+    /** The local account the gallery was opened for, or null. Reads the account file, so only call it off the main thread. */
+    @Nullable
+    private Account findLocalAccount() {
+        try {
+            String fileName = getArguments() == null ? null : getArguments().getString(ARG_ACCOUNT_FILE);
+            if (fileName == null) return null;
+            for (Account account : Accounts.load().accounts) {
+                if (account.mSaveLocation != null && fileName.equals(account.mSaveLocation.getName())) {
+                    return account.authType == AuthType.LOCAL && account.username != null ? account : null;
+                }
+            }
+        } catch (Exception ignored) {
+            // treated as no account
+        }
+        return null;
+    }
+
+    private void toastLater(final int message) {
+        final android.content.Context appContext = requireContext().getApplicationContext();
+        mHandler.post(() -> Toast.makeText(appContext, message, Toast.LENGTH_LONG).show());
+    }
+
+    private static int messageFor(int code) {
+        if (code == 200) return R.string.blockcomet_gallery_mine_added;
+        if (code == LocalSkins.PUBLISH_NO_SERVICE) return R.string.blockcomet_publish_no_service;
+        if (code == 400) return R.string.blockcomet_publish_invalid;
+        if (code == 403) return R.string.blockcomet_publish_taken;
+        return R.string.blockcomet_publish_failed;
+    }
+
+    /** Uploads the skin that is chosen for this account and shows it in the gallery. */
+    private void addMySkin() {
+        MojoApplication.sExecutorService.execute(() -> {
+            Account account = findLocalAccount();
+            if (account == null) {
+                toastLater(R.string.blockcomet_gallery_need_local);
+                return;
+            }
+            byte[] png = null;
+            try {
+                SkinLibrary.Entry entry = SkinLibrary.find(SkinLibrary.getSelected(SkinLibrary.localKey(account.username)));
+                if (entry != null) png = SkinLibrary.readBytes(entry);
+            } catch (Exception ignored) {
+                // handled below
+            }
+            if (png == null) {
+                toastLater(R.string.blockcomet_gallery_need_skin);
+                return;
+            }
+            LocalSkins.publishListed(account.username, png, true, code -> toastLater(messageFor(code)));
+        });
+    }
+
+    /** Hides the player's skin in the gallery again; it stays available in the game. */
+    private void removeMySkin() {
+        MojoApplication.sExecutorService.execute(() -> {
+            Account account = findLocalAccount();
+            if (account == null) {
+                toastLater(R.string.blockcomet_gallery_need_local);
+                return;
+            }
+            LocalSkins.setListed(account.username, false, code -> toastLater(
+                    code == 200 ? R.string.blockcomet_gallery_mine_removed
+                            : code == LocalSkins.PUBLISH_NOTHING ? R.string.blockcomet_gallery_mine_nothing
+                            : code == LocalSkins.PUBLISH_NO_SERVICE ? R.string.blockcomet_publish_no_service
+                            : R.string.blockcomet_publish_failed));
+        });
+    }
+
     // ------------------------------------------------------------------ network
 
-    private static String skinUrl(@NonNull String name) {
-        return LocalSkins.skinsApi() + "/skins/" + Uri.encode(name) + ".png";
+    private static String skinUrl(@NonNull Item item) {
+        return LocalSkins.skinsApi() + (item.featured ? "/featured/" : "/skins/") + Uri.encode(item.name) + ".png";
+    }
+
+    private int indexOfKey(@NonNull String key) {
+        for (int i = 0; i < mItems.size(); i++) {
+            if (mItems.get(i).key().equals(key)) return i;
+        }
+        return -1;
     }
 
     private static byte[] download(@NonNull String address, int maxBytes) throws IOException {
@@ -372,15 +475,15 @@ public class SkinGalleryFragment extends Fragment {
 
         @Override
         public int getItemCount() {
-            return mNames.size();
+            return mItems.size();
         }
 
         @Override
         public void onBindViewHolder(@NonNull Holder holder, int position) {
-            final String name = mNames.get(position);
-            holder.label.setText(name);
-            holder.image.setImageBitmap(thumb(name));
-            holder.itemView.setOnClickListener(v -> openSkin(name));
+            final Item item = mItems.get(position);
+            holder.label.setText(item.featured ? "\u2605 " + item.name : item.name);
+            holder.image.setImageBitmap(thumb(item));
+            holder.itemView.setOnClickListener(v -> openSkin(item));
         }
     }
 }

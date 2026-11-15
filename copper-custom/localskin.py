@@ -230,8 +230,11 @@ for layout_dir in ("layout", "layout-land"):
 patch(os.path.join(java, "skins", "SkinEditorFragment.java"), [
     ("        View unpublishView = view.findViewById(R.id.skin_unpublish_button);\n",
      "        View galleryView = view.findViewById(R.id.skin_gallery_button);\n"
-     "        if (galleryView != null) galleryView.setOnClickListener(v ->\n"
-     "                Tools.swapFragmentFullScreen(requireActivity(), SkinGalleryFragment.class, SkinGalleryFragment.TAG, null));\n"
+     "        if (galleryView != null) galleryView.setOnClickListener(v -> {\n"
+     "            Bundle galleryArgs = new Bundle();\n"
+     "            galleryArgs.putString(SkinGalleryFragment.ARG_ACCOUNT_FILE, getArguments() == null ? null : getArguments().getString(ARG_ACCOUNT_FILE));\n"
+     "            Tools.swapFragmentFullScreen(requireActivity(), SkinGalleryFragment.class, SkinGalleryFragment.TAG, galleryArgs);\n"
+     "        });\n"
      "        View unpublishView = view.findViewById(R.id.skin_unpublish_button);\n")])
 
 # ---- Settings switch + texts ---------------------------------------------------------------------------------------
@@ -243,28 +246,12 @@ patch(os.path.join(res, "xml", "pref_misc.xml"), [(
     "        android:defaultValue=\"false\"\n"
     "        android:key=\"blockcomet_perf_mods\"\n"
     "        android:title=\"@string/blockcomet_perf_mods_title\"\n"
-    "        android:summary=\"@string/blockcomet_perf_mods_desc\" />\n"
-    "    <SwitchPreferenceCompat\n"
-    "        android:widgetLayout=\"@layout/preference_widget_material_switch\"\n"
-    "        android:defaultValue=\"true\"\n"
-    "        android:key=\"blockcomet_share_skin\"\n"
-    "        android:title=\"@string/blockcomet_share_skin_title\"\n"
-    "        android:summary=\"@string/blockcomet_share_skin_desc\" />\n"
-    "    <SwitchPreferenceCompat\n"
-    "        android:widgetLayout=\"@layout/preference_widget_material_switch\"\n"
-    "        android:defaultValue=\"false\"\n"
-    "        android:key=\"blockcomet_list_skin\"\n"
-    "        android:title=\"@string/blockcomet_list_skin_title\"\n"
-    "        android:summary=\"@string/blockcomet_list_skin_desc\" />")])
+    "        android:summary=\"@string/blockcomet_perf_mods_desc\" />")])
 
 en = '''<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="blockcomet_perf_mods_title">Download performance mods</string>
     <string name="blockcomet_perf_mods_desc">Add FerriteCore, Lithium, ModernFix, Krypton, Noisium, MemoryLeakFix and ScalableLux to the Meteor instances the next time a game starts. Off by default: nothing is added without your permission, and turning it off never removes mods you already have.</string>
-    <string name="blockcomet_share_skin_title">Share my skin with other players</string>
-    <string name="blockcomet_share_skin_desc">When you start a game with a local account, your chosen skin is published under your player name so other BlockComet players see it. Turn this off to keep your skin on this phone only.</string>
-    <string name="blockcomet_list_skin_title">Show my skin in the gallery</string>
-    <string name="blockcomet_list_skin_desc">Lets other players find your published skin by searching your player name in the skin gallery. Off by default. Needs \"Share my skin\" to be on.</string>
     <string name="blockcomet_gallery_button">Skin gallery</string>
     <string name="blockcomet_gallery_search_hint">Search a player name</string>
     <string name="blockcomet_gallery_search">Search</string>
@@ -275,6 +262,13 @@ en = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_gallery_added">Added to your skins.</string>
     <string name="blockcomet_gallery_bad_name">Names use letters, numbers and _ only, up to 16.</string>
     <string name="blockcomet_gallery_load_failed">Could not download this skin.</string>
+    <string name="blockcomet_gallery_add_mine">Add my skin</string>
+    <string name="blockcomet_gallery_remove_mine">Remove my skin</string>
+    <string name="blockcomet_gallery_need_local">Use a local account to add your skin to the gallery.</string>
+    <string name="blockcomet_gallery_need_skin">Pick a skin in the editor first, then add it.</string>
+    <string name="blockcomet_gallery_mine_added">Your skin is in the gallery. It can take a couple of minutes to show up.</string>
+    <string name="blockcomet_gallery_mine_removed">Your skin is no longer shown in the gallery.</string>
+    <string name="blockcomet_gallery_mine_nothing">You have not published a skin, so there is nothing to remove.</string>
     <string name="blockcomet_unpublish_button">Delete my published skin</string>
     <string name="blockcomet_unpublish_done">Your skin was removed for other players. Choose another skin and it is published the next time a game starts.</string>
     <string name="blockcomet_unpublish_none">No skin of this name was published from this phone.</string>
@@ -298,10 +292,6 @@ ar = '''<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="blockcomet_perf_mods_title">تنزيل مودات الأداء</string>
     <string name="blockcomet_perf_mods_desc">يضيف FerriteCore وLithium وModernFix وKrypton وNoisium وMemoryLeakFix وScalableLux إلى نسخ Meteor عند تشغيل اللعبة المرة القادمة. معطّل افتراضيًا: لا يُضاف أي مود بدون إذنك، وإيقافه لا يحذف مودات موجودة عندك.</string>
-    <string name="blockcomet_share_skin_title">مشاركة سكني مع اللاعبين</string>
-    <string name="blockcomet_share_skin_desc">عند تشغيل لعبة بحساب محلي يُنشر السكن الذي اخترته باسم لاعبك ليراه لاعبو BlockComet الآخرون. أوقفه إن أردت إبقاء سكنك على هذا الجوال فقط.</string>
-    <string name="blockcomet_list_skin_title">إظهار سكني في المعرض</string>
-    <string name="blockcomet_list_skin_desc">يسمح للاعبين بالعثور على سكنك المنشور في معرض السكنات عند البحث عن اسمك. مطفأ افتراضياً، ويحتاج تفعيل «مشاركة سكني».</string>
     <string name="blockcomet_gallery_button">معرض السكنات</string>
     <string name="blockcomet_gallery_search_hint">ابحث عن اسم لاعب</string>
     <string name="blockcomet_gallery_search">بحث</string>
@@ -312,6 +302,13 @@ ar = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_gallery_added">تمت الإضافة إلى سكناتك.</string>
     <string name="blockcomet_gallery_bad_name">الأسماء حروف وأرقام و _ فقط، حتى 16 حرفاً.</string>
     <string name="blockcomet_gallery_load_failed">تعذّر تنزيل هذا السكن.</string>
+    <string name="blockcomet_gallery_add_mine">إضافة سكني</string>
+    <string name="blockcomet_gallery_remove_mine">إزالة سكني</string>
+    <string name="blockcomet_gallery_need_local">استخدم حساباً محلياً لإضافة سكنك إلى المعرض.</string>
+    <string name="blockcomet_gallery_need_skin">اختر سكناً من المحرر أولاً ثم أضفه.</string>
+    <string name="blockcomet_gallery_mine_added">سكنك الآن في المعرض. قد يتأخر ظهوره دقيقتين.</string>
+    <string name="blockcomet_gallery_mine_removed">لم يعد سكنك ظاهراً في المعرض.</string>
+    <string name="blockcomet_gallery_mine_nothing">لم تنشر أي سكن، فلا يوجد ما يُزال.</string>
     <string name="blockcomet_unpublish_button">حذف سكني المنشور</string>
     <string name="blockcomet_unpublish_done">تم حذف سكنك عند اللاعبين. اختر سكنًا آخر وسيُنشر عند تشغيل اللعبة المرة القادمة.</string>
     <string name="blockcomet_unpublish_none">لا يوجد سكن منشور بهذا الاسم من هذا الجوال.</string>
