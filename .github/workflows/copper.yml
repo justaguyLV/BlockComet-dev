@@ -123,7 +123,7 @@ jobs:
           chk "gone after delete"            "$(code "$F")" 404
           chk "name can be claimed again"    "$(code -X PUT -H "X-Skin-Token: $B" --data-binary @/tmp/skin.png "$F")" 200
           # Gallery: hidden by default, listed on request, searchable by the start of the name, hidden again on request
-          gal() { curl -s "$URL/gallery?q=$N" | grep -c "\"name\":\"$N\""; }
+          gal() { curl -s "$URL/gallery?q=$N&cb=$RANDOM$RANDOM" | grep -c "\"name\":\"$N\""; }  # the cache-buster keeps the 2-minute edge cache of the gallery out of the test
           poll() { for i in 1 2 3 4 5 6 7 8; do [ "$(gal)" = "$1" ] && break; sleep 4; done; gal; }
           chk "hidden from the gallery by default"  "$(gal)" 0
           chk "stranger cannot list the skin"       "$(code -X PATCH -H "X-Skin-Token: $A" -H "X-Skin-Listed: 1" "$F")" 403
