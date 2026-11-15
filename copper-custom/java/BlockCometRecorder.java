@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.util.DisplayMetrics;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -47,6 +48,7 @@ public final class BlockCometRecorder {
     private static boolean sControlsWereVisible;
     private static boolean sControlsHidden;
     private static int[] sSavedVisibility = new int[0];
+    private static GameOnlyRecorder sGame;
 
     private static boolean ar() { return "ar".equals(Locale.getDefault().getLanguage()); }
     private static String t(String en, String arabic) { return ar() ? arabic : en; }
@@ -71,7 +73,7 @@ public final class BlockCometRecorder {
 
     public static void open(GameActivity act) {
         sActivity = act;
-        boolean busy = sRecorder != null && sRecorder.isBusyRecording();
+        boolean busy = (sRecorder != null && sRecorder.isBusyRecording()) || (sGame != null && sGame.isRunning());
         if (!busy) setControlsHidden(false);
         String[] items = {
                 busy ? t("Stop recording", "إيقاف التسجيل") : t("Start recording", "بدء التسجيل"),
@@ -100,12 +102,14 @@ public final class BlockCometRecorder {
         SharedPreferences p = prefs(act);
         int fps = p.getInt("fps", 30), q = p.getInt("quality", 720);
         boolean mic = p.getBoolean("mic", false), hide = p.getBoolean("hide_controls", true);
+        boolean gameOnly = p.getBoolean("game_only", true);
         String on = t("on", "مفعّل"), off = t("off", "متوقف");
         String[] items = {
                 "FPS: " + fps,
                 t("Quality: ", "الجودة: ") + q + "p",
-                t("Microphone: ", "الميكروفون: ") + (mic ? on : off),
-                t("Hide controls while recording: ", "إخفاء الأزرار أثناء التسجيل: ") + (hide ? on : off)
+                t("Microphone (full-screen mode only): ", "الميكروفون (وضع الشاشة الكاملة فقط): ") + (mic ? on : off),
+                t("Game only: controls stay on your screen, not in the video: ", "اللعبة فقط: الأزرار لك وما تظهر في الفيديو: ") + (gameOnly ? on : off),
+                t("Full-screen mode: hide controls: ", "وضع الشاشة الكاملة: إخفاء الأزرار: ") + (hide ? on : off)
         };
         new AlertDialog.Builder(act).setTitle(t("Recording settings", "إعدادات التسجيل"))
                 .setItems(items, (d, which) -> {
@@ -113,6 +117,7 @@ public final class BlockCometRecorder {
                     if (which == 0) e.putInt("fps", next(FPS, fps));
                     else if (which == 1) e.putInt("quality", next(QUALITY, q));
                     else if (which == 2) e.putBoolean("mic", !mic);
+                    else if (which == 3) e.putBoolean("game_only", !gameOnly);
                     else e.putBoolean("hide_controls", !hide);
                     e.apply();
                     settings(act); // show the new value
@@ -123,6 +128,7 @@ public final class BlockCometRecorder {
     // ---- start / stop ------------------------------------------------------------------------------------------
 
     private static void start(GameActivity act) {
+        if (prefs(act).getBoolean("game_only", true)) { startGameOnly(act); return; }
         if (prefs(act).getBoolean("mic", false)
                 && ContextCompat.checkSelfPermission(act, android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             final ActivityResultLauncher<?>[] holder = new ActivityResultLauncher<?>[1];
@@ -206,6 +212,10 @@ public final class BlockCometRecorder {
     }
 
     private static void stop(GameActivity act) {
+        if (sGame != null && sGame.isRunning()) {
+            Toast.makeText(act, t("Saving the video...", "جاري حفظ الفيديو..."), Toast.LENGTH_SHORT).show();
+            sGame.stop();
+        }
         if (sRecorder != null && sRecorder.isBusyRecording()) sRecorder.stopScreenRecording();
         setControlsHidden(false);
     }
@@ -243,6 +253,49 @@ public final class BlockCometRecorder {
                 if (child instanceof ControlInterface) child.setVisibility(sSavedVisibility[i]);
             }
             sControlsHidden = false;
+        }
+    }
+
+    // ---- game only ---------------------------------------------------------------------------------------------
+
+    private static View findRenderView(View v) {
+        if (v instanceof android.view.SurfaceView || v instanceof android.view.TextureView) return v;
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View f = findRenderView(g.getChildAt(i));
+                if (f != null) return f;
+            }
+        }
+        return null;
+    }
+
+    private static void startGameOnly(GameActivity act) {
+        int id = act.getResources().getIdentifier("main_game_render_view", "id", act.getPackageName());
+        View root = id == 0 ? null : act.findViewById(id);
+        View rv = root == null ? null : findRenderView(root);
+        if (rv == null || rv.getWidth() <= 0 || rv.getHeight() <= 0) {
+            Toast.makeText(act, t("The game is not ready to record yet", "اللعبة ما جهزت للتسجيل بعد"), Toast.LENGTH_LONG).show();
+            return;
+        }
+        SharedPreferences p = prefs(act);
+        int fps = p.getInt("fps", 30), q = p.getInt("quality", 720);
+        float scale = Math.min(1f, (float) q / Math.min(rv.getWidth(), rv.getHeight()));
+        int outW = Math.max(2, ((int) (rv.getWidth() * scale)) & ~1), outH = Math.max(2, ((int) (rv.getHeight() * scale)) & ~1);
+        int base = q >= 1080 ? 10_000_000 : q >= 720 ? 5_000_000 : 2_500_000;
+        File out = new File(recordingsDir(act), "BlockComet_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".mp4");
+        sActivity = act;
+        sGame = new GameOnlyRecorder(rv, outW, outH, fps, (int) (base * (fps / 30f)), out, (file, err) -> {
+            sGame = null;
+            if (err == null) Toast.makeText(act, t("Video saved in My videos", "تم حفظ الفيديو في فيديوهاتي"), Toast.LENGTH_LONG).show();
+            else Toast.makeText(act, t("Recording error: ", "خطأ في التسجيل: ") + err, Toast.LENGTH_LONG).show();
+        });
+        try {
+            sGame.start();
+            Toast.makeText(act, t("Recording the game only. Stop it from the in-game menu", "يسجّل اللعبة فقط. أوقفه من قائمة اللعبة"), Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            sGame = null;
+            Toast.makeText(act, t("Could not start: ", "تعذّر البدء: ") + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 

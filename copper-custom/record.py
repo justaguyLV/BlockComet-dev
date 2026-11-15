@@ -15,6 +15,7 @@ def sub(path, old, new, count=1):
 # 1. our class
 os.makedirs(os.path.join(java, "record"), exist_ok=True)
 shutil.copy(os.path.join(here, "java/BlockCometRecorder.java"), os.path.join(java, "record/BlockCometRecorder.java"))
+shutil.copy(os.path.join(here, "java/GameOnlyRecorder.java"), os.path.join(java, "record/GameOnlyRecorder.java"))
 
 # 2. the library (JitPack is already a repository of the project)
 sub(gradle, "    implementation 'androidx.documentfile:documentfile:1.1.0'\n",
