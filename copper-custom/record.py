@@ -38,4 +38,10 @@ sub(manifest, '        <provider\n            android:name=".utils.scoped.Folder
     '            android:grantUriPermissions="true">\n            <meta-data\n'
     '                android:name="android.support.FILE_PROVIDER_PATHS"\n                android:resource="@xml/bc_file_paths" />\n'
     '        </provider>\n        <provider\n            android:name=".utils.scoped.FolderProvider"')
+# 5. HBRecorder's notification STOP button is a manifest BroadcastReceiver. Copper's Application wraps its base context
+# (LocaleUtils), and Android then fails to instantiate ANY manifest receiver ("cannot be cast to ContextImpl") and the
+# app crashes. Remove that receiver; recording is stopped from the in-game menu instead.
+sub(manifest, '        <provider\n            android:name="androidx.core.content.FileProvider"',
+    '        <receiver\n            android:name="com.hbisoft.hbrecorder.NotificationReceiver"\n            tools:node="remove" />\n'
+    '        <provider\n            android:name="androidx.core.content.FileProvider"')
 print("recording added")

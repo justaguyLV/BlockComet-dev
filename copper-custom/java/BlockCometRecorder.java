@@ -31,6 +31,7 @@ import java.util.Locale;
 
 import git.artdeell.mojo.game.GameActivity;
 import git.artdeell.mojo.input.ControlLayout;
+import git.artdeell.mojo.input.buttons.ControlInterface;
 
 /**
  * BlockComet in-game video recording. Wraps the open-source HBRecorder library (MIT), which uses Android's own
@@ -169,7 +170,7 @@ public final class BlockCometRecorder {
         sRecorder = new HBRecorder(act.getApplicationContext(), new HBRecorderListener() {
             @Override public void HBRecorderOnStart() {
                 ui(() -> {
-                    Toast.makeText(sActivity, t("Recording started", "بدأ التسجيل"), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(sActivity, t("Recording started. Stop it from the in-game menu", "بدأ التسجيل. أوقفه من قائمة اللعبة"), Toast.LENGTH_SHORT).show();
                 });
             }
             @Override public void HBRecorderOnComplete() {
@@ -199,8 +200,7 @@ public final class BlockCometRecorder {
         if (mic) { sRecorder.setAudioSource("MIC"); sRecorder.setAudioBitrate(128000); sRecorder.setAudioSamplingRate(44100); }
         sRecorder.setNotificationSmallIcon(android.R.drawable.ic_menu_camera);
         sRecorder.setNotificationTitle(t("BlockComet is recording", "BlockComet يسجّل"));
-        sRecorder.setNotificationDescription(t("Tap Stop to finish", "اضغط إيقاف للإنهاء"));
-        sRecorder.setNotificationButtonText(t("Stop", "إيقاف"));
+        sRecorder.setNotificationDescription(t("Stop it from the in-game menu", "أوقفه من قائمة اللعبة"));
         if (p.getBoolean("hide_controls", true)) setControlsHidden(true);
         sRecorder.startScreenRecording(data, resultCode);
     }
@@ -217,7 +217,8 @@ public final class BlockCometRecorder {
     /**
      * Hides every on-screen control while recording and puts them back afterwards, in the state they were in.
      * Copper never hides its own "GUI" and "Mouse" buttons (they bring the controls back), so they are hidden here
-     * by hand too, or they would stay in the video. The recording is stopped from its notification.
+     * by hand too, or they would stay in the video. Only ControlInterface views are touched: the ControlLayout also
+     * holds the game view itself and the menu (drawer) button. The recording is stopped from the in-game menu.
      */
     private static void setControlsHidden(boolean hide) {
         if (sActivity == null) return;
@@ -229,12 +230,18 @@ public final class BlockCometRecorder {
             sSavedVisibility = new int[n];
             for (int i = 0; i < n; i++) sSavedVisibility[i] = layout.getChildAt(i).getVisibility();
             layout.setControlVisible(false);   // keeps them hidden when the game switches between menu and play
-            for (int i = 0; i < n; i++) layout.getChildAt(i).setVisibility(View.GONE);
+            for (int i = 0; i < n; i++) {
+                View child = layout.getChildAt(i);
+                if (child instanceof ControlInterface) child.setVisibility(View.GONE); // never the game view or the menu button
+            }
             sControlsHidden = true;
         } else if (!hide && sControlsHidden) {
             layout.setControlVisible(sControlsWereVisible);
             int n = Math.min(layout.getChildCount(), sSavedVisibility.length);
-            for (int i = 0; i < n; i++) layout.getChildAt(i).setVisibility(sSavedVisibility[i]);
+            for (int i = 0; i < n; i++) {
+                View child = layout.getChildAt(i);
+                if (child instanceof ControlInterface) child.setVisibility(sSavedVisibility[i]);
+            }
             sControlsHidden = false;
         }
     }
