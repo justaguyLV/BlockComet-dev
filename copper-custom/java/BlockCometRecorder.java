@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.util.DisplayMetrics;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -44,6 +45,7 @@ public final class BlockCometRecorder {
     private static GameActivity sActivity;
     private static boolean sControlsWereVisible;
     private static boolean sControlsHidden;
+    private static int[] sSavedVisibility = new int[0];
 
     private static boolean ar() { return "ar".equals(Locale.getDefault().getLanguage()); }
     private static String t(String en, String arabic) { return ar() ? arabic : en; }
@@ -69,6 +71,7 @@ public final class BlockCometRecorder {
     public static void open(GameActivity act) {
         sActivity = act;
         boolean busy = sRecorder != null && sRecorder.isBusyRecording();
+        if (!busy) setControlsHidden(false);
         String[] items = {
                 busy ? t("Stop recording", "إيقاف التسجيل") : t("Start recording", "بدء التسجيل"),
                 t("Recording settings", "إعدادات التسجيل"),
@@ -167,7 +170,6 @@ public final class BlockCometRecorder {
             @Override public void HBRecorderOnStart() {
                 ui(() -> {
                     Toast.makeText(sActivity, t("Recording started", "بدأ التسجيل"), Toast.LENGTH_SHORT).show();
-                    if (prefs(sActivity).getBoolean("hide_controls", true)) setControlsHidden(true);
                 });
             }
             @Override public void HBRecorderOnComplete() {
@@ -199,6 +201,7 @@ public final class BlockCometRecorder {
         sRecorder.setNotificationTitle(t("BlockComet is recording", "BlockComet يسجّل"));
         sRecorder.setNotificationDescription(t("Tap Stop to finish", "اضغط إيقاف للإنهاء"));
         sRecorder.setNotificationButtonText(t("Stop", "إيقاف"));
+        if (p.getBoolean("hide_controls", true)) setControlsHidden(true);
         sRecorder.startScreenRecording(data, resultCode);
     }
 
@@ -211,17 +214,27 @@ public final class BlockCometRecorder {
         if (sActivity != null) sActivity.runOnUiThread(r);
     }
 
-    /** Hides the on-screen controls while recording and puts them back afterwards, in the state they were in. */
+    /**
+     * Hides every on-screen control while recording and puts them back afterwards, in the state they were in.
+     * Copper never hides its own "GUI" and "Mouse" buttons (they bring the controls back), so they are hidden here
+     * by hand too, or they would stay in the video. The recording is stopped from its notification.
+     */
     private static void setControlsHidden(boolean hide) {
         if (sActivity == null) return;
         ControlLayout layout = sActivity.bcControlLayout();
         if (layout == null) return;
         if (hide && !sControlsHidden) {
             sControlsWereVisible = layout.areControlVisible();
-            layout.setControlVisible(false);
+            int n = layout.getChildCount();
+            sSavedVisibility = new int[n];
+            for (int i = 0; i < n; i++) sSavedVisibility[i] = layout.getChildAt(i).getVisibility();
+            layout.setControlVisible(false);   // keeps them hidden when the game switches between menu and play
+            for (int i = 0; i < n; i++) layout.getChildAt(i).setVisibility(View.GONE);
             sControlsHidden = true;
         } else if (!hide && sControlsHidden) {
             layout.setControlVisible(sControlsWereVisible);
+            int n = Math.min(layout.getChildCount(), sSavedVisibility.length);
+            for (int i = 0; i < n; i++) layout.getChildAt(i).setVisibility(sSavedVisibility[i]);
             sControlsHidden = false;
         }
     }
