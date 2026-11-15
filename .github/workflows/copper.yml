@@ -269,11 +269,15 @@ jobs:
           ls -l out/BlockComet.apk
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs out/BlockComet.apk | head -8
 
+      # The release below is the real download; the artifact is only a spare copy. It must never stop the release
+      # (a full Actions storage quota made this step fail and skipped the release), and it expires after one day.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: BlockComet-copper-apk
           path: out/BlockComet.apk
           if-no-files-found: error
+          retention-days: 1
 
       - name: Publish release (direct download link)
         env:
