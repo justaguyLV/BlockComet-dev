@@ -151,7 +151,11 @@ public final class LocalSkins {
             final String lower = username.toLowerCase(java.util.Locale.ROOT);
             final String hash = hex(java.security.MessageDigest.getInstance("SHA-256").digest(png));
             final String doneKey = "skin_published_" + lower;
-            if (!force && hash.equals(prefs.getString(doneKey, null))) return;
+            if (!force && hash.equals(prefs.getString(doneKey, null))) {
+                syncListing(username, lower, prefs);
+                return;
+            }
+            final boolean listed = git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_list_skin", false);
             final String tokenKey = "skin_token_" + lower;
             String token = prefs.getString(tokenKey, null);
             if (token == null) {
@@ -173,12 +177,13 @@ public final class LocalSkins {
                     connection.setDoOutput(true);
                     connection.setRequestProperty("Content-Type", "image/png");
                     connection.setRequestProperty("X-Skin-Token", finalToken);
+                    connection.setRequestProperty("X-Skin-Listed", listed ? "1" : "0");
                     try (java.io.OutputStream out = connection.getOutputStream()) {
                         out.write(png);
                     }
                     code = connection.getResponseCode();
                     if (code == 200) {
-                        prefs.edit().putString(doneKey, hash).apply();
+                        prefs.edit().putString(doneKey, hash).putBoolean("skin_listed_" + lower, listed).apply();
                         Log.i(TAG, "Skin of " + username + " published");
                     } else {
                         Log.w(TAG, "Skin of " + username + " not published, HTTP " + code);
@@ -229,6 +234,40 @@ public final class LocalSkins {
     /** "1.20.1, 1.20.2, ..." for the warning texts. */
     public static String supportedVersionsText() {
         return android.text.TextUtils.join(", ", AsyncAssetManager.getSkinModGameVersions());
+    }
+
+    /** The skin did not change, but the player may have switched "Show my skin in the gallery": tell the service without uploading again. */
+    private static void syncListing(String username, String lower, android.content.SharedPreferences prefs) {
+        try {
+            final String token = prefs.getString("skin_token_" + lower, null);
+            if (token == null) return;
+            final boolean listed = git.artdeell.mojo.prefs.LauncherPreferences.DEFAULT_PREF.getBoolean("blockcomet_list_skin", false);
+            final String listedKey = "skin_listed_" + lower;
+            if (prefs.contains(listedKey) && prefs.getBoolean(listedKey, false) == listed) return;
+            final String target = SKINS_API + "/skins/" + username + ".png";
+            Thread thread = new Thread(() -> {
+                java.net.HttpURLConnection connection = null;
+                try {
+                    connection = (java.net.HttpURLConnection) new java.net.URL(target).openConnection();
+                    connection.setRequestMethod("POST"); // the service treats POST like PATCH; HttpURLConnection cannot send PATCH
+                    connection.setConnectTimeout(8000);
+                    connection.setReadTimeout(8000);
+                    connection.setRequestProperty("X-Skin-Token", token);
+                    connection.setRequestProperty("X-Skin-Listed", listed ? "1" : "0");
+                    int code = connection.getResponseCode();
+                    if (code == 200) prefs.edit().putBoolean(listedKey, listed).apply();
+                    Log.i(TAG, "Gallery listing of " + username + " set to " + listed + ", HTTP " + code);
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not update the gallery listing", e);
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+            }, "BlockCometSkinListing");
+            thread.setDaemon(true);
+            thread.start();
+        } catch (Exception e) {
+            Log.w(TAG, "Could not start the gallery listing update", e);
+        }
     }
 
     /** True when a CustomSkinLoader jar (not switched off) is in the instance's mods folder. */

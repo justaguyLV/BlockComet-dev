@@ -224,7 +224,13 @@ patch(os.path.join(res, "xml", "pref_misc.xml"), [(
     "        android:defaultValue=\"true\"\n"
     "        android:key=\"blockcomet_share_skin\"\n"
     "        android:title=\"@string/blockcomet_share_skin_title\"\n"
-    "        android:summary=\"@string/blockcomet_share_skin_desc\" />")])
+    "        android:summary=\"@string/blockcomet_share_skin_desc\" />\n"
+    "    <SwitchPreferenceCompat\n"
+    "        android:widgetLayout=\"@layout/preference_widget_material_switch\"\n"
+    "        android:defaultValue=\"false\"\n"
+    "        android:key=\"blockcomet_list_skin\"\n"
+    "        android:title=\"@string/blockcomet_list_skin_title\"\n"
+    "        android:summary=\"@string/blockcomet_list_skin_desc\" />")])
 
 en = '''<?xml version="1.0" encoding="utf-8"?>
 <resources>
@@ -232,6 +238,8 @@ en = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_perf_mods_desc">Add FerriteCore, Lithium, ModernFix, Krypton, Noisium, MemoryLeakFix and ScalableLux to the Meteor instances the next time a game starts. Off by default: nothing is added without your permission, and turning it off never removes mods you already have.</string>
     <string name="blockcomet_share_skin_title">Share my skin with other players</string>
     <string name="blockcomet_share_skin_desc">When you start a game with a local account, your chosen skin is published under your player name so other BlockComet players see it. Turn this off to keep your skin on this phone only.</string>
+    <string name="blockcomet_list_skin_title">Show my skin in the gallery</string>
+    <string name="blockcomet_list_skin_desc">Lets other players find your published skin by searching your player name in the skin gallery. Off by default. Needs \"Share my skin\" to be on.</string>
     <string name="blockcomet_unpublish_button">Delete my published skin</string>
     <string name="blockcomet_unpublish_done">Your skin was removed for other players. Choose another skin and it is published the next time a game starts.</string>
     <string name="blockcomet_unpublish_none">No skin of this name was published from this phone.</string>
@@ -257,6 +265,8 @@ ar = '''<?xml version="1.0" encoding="utf-8"?>
     <string name="blockcomet_perf_mods_desc">يضيف FerriteCore وLithium وModernFix وKrypton وNoisium وMemoryLeakFix وScalableLux إلى نسخ Meteor عند تشغيل اللعبة المرة القادمة. معطّل افتراضيًا: لا يُضاف أي مود بدون إذنك، وإيقافه لا يحذف مودات موجودة عندك.</string>
     <string name="blockcomet_share_skin_title">مشاركة سكني مع اللاعبين</string>
     <string name="blockcomet_share_skin_desc">عند تشغيل لعبة بحساب محلي يُنشر السكن الذي اخترته باسم لاعبك ليراه لاعبو BlockComet الآخرون. أوقفه إن أردت إبقاء سكنك على هذا الجوال فقط.</string>
+    <string name="blockcomet_list_skin_title">إظهار سكني في المعرض</string>
+    <string name="blockcomet_list_skin_desc">يسمح للاعبين بالعثور على سكنك المنشور في معرض السكنات عند البحث عن اسمك. مطفأ افتراضياً، ويحتاج تفعيل «مشاركة سكني».</string>
     <string name="blockcomet_unpublish_button">حذف سكني المنشور</string>
     <string name="blockcomet_unpublish_done">تم حذف سكنك عند اللاعبين. اختر سكنًا آخر وسيُنشر عند تشغيل اللعبة المرة القادمة.</string>
     <string name="blockcomet_unpublish_none">لا يوجد سكن منشور بهذا الاسم من هذا الجوال.</string>

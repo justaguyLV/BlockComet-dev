@@ -122,6 +122,15 @@ jobs:
           sleep 1
           chk "gone after delete"            "$(code "$F")" 404
           chk "name can be claimed again"    "$(code -X PUT -H "X-Skin-Token: $B" --data-binary @/tmp/skin.png "$F")" 200
+          # Gallery: hidden by default, listed on request, searchable by the start of the name, hidden again on request
+          gal() { curl -s "$URL/gallery?q=$N" | grep -c "\"name\":\"$N\""; }
+          poll() { for i in 1 2 3 4 5 6 7 8; do [ "$(gal)" = "$1" ] && break; sleep 4; done; gal; }
+          chk "hidden from the gallery by default"  "$(gal)" 0
+          chk "stranger cannot list the skin"       "$(code -X PATCH -H "X-Skin-Token: $A" -H "X-Skin-Listed: 1" "$F")" 403
+          chk "owner lists the skin"                "$(code -X PATCH -H "X-Skin-Token: $B" -H "X-Skin-Listed: 1" "$F")" 200
+          chk "listed skin shows in the gallery"    "$(poll 1)" 1
+          chk "owner hides the skin again"          "$(code -X PATCH -H "X-Skin-Token: $B" -H "X-Skin-Listed: 0" "$F")" 200
+          chk "hidden skin leaves the gallery"      "$(poll 0)" 0
           code -X DELETE -H "X-Skin-Token: $B" "$F" >/dev/null
           printf "$R\n" | tee -a "$GITHUB_STEP_SUMMARY"
           [ "$BAD" = 0 ] || { echo "::error::the live skin service test failed"; exit 1; }
