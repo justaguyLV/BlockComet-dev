@@ -2,6 +2,7 @@ package git.artdeell.mojo.record;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -63,6 +64,11 @@ final class GameOnlyRecorder {
         fmt.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
         fmt.setInteger(MediaFormat.KEY_FRAME_RATE, fps);
         fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+        if (Build.VERSION.SDK_INT >= 24) { // say plainly how the colours are encoded, so players do not guess a different range
+            fmt.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709);
+            fmt.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED);
+            fmt.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO);
+        }
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
         codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         input = codec.createInputSurface();
@@ -70,6 +76,8 @@ final class GameOnlyRecorder {
         muxer = new MediaMuxer(file.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         bitmaps[0] = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         bitmaps[1] = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        bitmaps[0].setHasAlpha(false);
+        bitmaps[1].setHasAlpha(false); // the game's alpha channel is not meant to be shown: treat every frame as opaque
         copyThread = new HandlerThread("bc-rec-copy");
         copyThread.start();
         copyHandler = new Handler(copyThread.getLooper());
@@ -114,6 +122,8 @@ final class GameOnlyRecorder {
             if (!running) return;
             try {
                 Canvas c = input.lockHardwareCanvas();
+                c.drawColor(Color.BLACK);
+                bmp.setHasAlpha(false);
                 c.drawBitmap(bmp, 0, 0, null);
                 input.unlockCanvasAndPost(c);
                 frames++;
