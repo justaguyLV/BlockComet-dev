@@ -17,13 +17,9 @@ jobs:
         run: |
           mkdir -p out
           A="https://api.cloudflare.com/client/v4/accounts/$CF_ACC"
-          q(){ curl -s -H "Authorization: Bearer $CF_TOKEN" "$1" | python3 -c "import sys,json
-try:
-  d=json.load(sys.stdin)
-except Exception as e:
-  print('{\"parse_error\":true}'); sys.exit()
-print(json.dumps({'success':d.get('success'),'errors':[e.get('message') for e in d.get('errors',[])],'result':d.get('result')},indent=1)[:6000])"; }
-          { echo "## token verify"; q "https://api.cloudflare.com/client/v4/user/tokens/verify"
+          q() { curl -s -H "Authorization: Bearer $CF_TOKEN" "$1" | jq -c '{success: .success, errors: [.errors[]?.message], result: .result}' | head -c 6000; echo; }
+          {
+            echo "## token verify"; q "https://api.cloudflare.com/client/v4/user/tokens/verify"
             echo "## scripts"; q "$A/workers/scripts"
             echo "## deployments"; q "$A/workers/scripts/blockcomet-skins/deployments"
             echo "## versions"; q "$A/workers/scripts/blockcomet-skins/versions"
@@ -31,8 +27,11 @@ print(json.dumps({'success':d.get('success'),'errors':[e.get('message') for e in
             echo "## kv"; q "$A/storage/kv/namespaces"
             echo "## d1"; q "$A/d1/database"
             echo "## r2"; q "$A/r2/buckets"
-            echo "## routes/zones"; q "https://api.cloudflare.com/client/v4/zones"
+            echo "## zones"; q "https://api.cloudflare.com/client/v4/zones"
             echo "## workers domains"; q "$A/workers/domains"
-          } > out/deep.txt
-          git config user.name bot; git config user.email bot@example.com
-          git add out && git commit -m "deep inspect" && git push
+          } > out/deep.txt 2>&1
+          git config user.name bot
+          git config user.email bot@example.com
+          git add out
+          git commit -m "deep inspect"
+          git push
