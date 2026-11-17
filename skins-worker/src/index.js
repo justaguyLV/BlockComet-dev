@@ -7,6 +7,8 @@
 //   GET /featured/<n>.png   a featured skin (put there by the deploy from featured.txt, not by players; separate from the player skins)
 // A name belongs to whoever published it first (the token's hash is stored); only the same token can replace the skin.
 // A skin is in the gallery only when its owner asked for it (X-Skin-Listed: 1); the default is hidden.
+import { admin, logEvent } from "./admin.js";
+
 const NAME = /^[A-Za-z0-9_]{3,16}$/;
 const MAX_BYTES = 24 * 1024;
 const MIN_SECONDS_BETWEEN_WRITES = 10;
@@ -70,8 +72,18 @@ function validSkin(buf) {
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
+    const ip = req.headers.get("cf-connecting-ip") || "";
+    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return admin(req, env, ctx, ip);
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+    // a banned IP gets nothing from the service (log at most once a minute per IP so a loop cannot use up the KV writes)
+    if (ip && (await env.SKINS.get("ban:ip:" + ip))) {
+      if (!(await env.SKINS.get("seen:" + ip))) { await env.SKINS.put("seen:" + ip, "1", { expirationTtl: 60 }); ctx.waitUntil(logEvent(env, { type: "blocked", ip, target: "ip", reason: url.pathname.slice(0, 60) })); }
+      return text("banned", 403);
+    }
     if (url.pathname === "/") return text("BlockComet skin registry");
+    // for the launcher to ask later whether a player is banned: GET /status/<name> -> {"banned":true|false}
+    const st = url.pathname.match(/^\/status\/([A-Za-z0-9_]{3,16})$/);
+    if (st && req.method === "GET") return json({ banned: !!(await env.SKINS.get("ban:name:" + st[1].toLowerCase())) }, { "cache-control": "no-store" });
     if (url.pathname === "/gallery") return req.method === "GET" ? gallery(url, env, ctx, req) : text("method not allowed", 405, { allow: "GET, OPTIONS" });
     const f = url.pathname.match(/^\/featured\/([A-Za-z0-9_]+?)(?:\.png)?$/);
     if (f && NAME.test(f[1]) && (req.method === "GET" || req.method === "HEAD")) {
@@ -82,6 +94,10 @@ export default {
     const m = url.pathname.match(/^\/skins\/([A-Za-z0-9_]+?)(?:\.png)?$/);
     if (!m || !NAME.test(m[1])) return text("not found", 404);
     const key = "skin:" + m[1].toLowerCase();
+    if (await env.SKINS.get("ban:name:" + m[1].toLowerCase())) {
+      if (req.method !== "GET" && req.method !== "HEAD") ctx.waitUntil(logEvent(env, { type: "blocked", ip, target: m[1].toLowerCase(), reason: "banned name" }));
+      return text(req.method === "GET" || req.method === "HEAD" ? "no skin" : "banned", req.method === "GET" || req.method === "HEAD" ? 404 : 403);
+    }
 
     if (req.method === "GET" || req.method === "HEAD") {
       const cache = caches.default;
@@ -100,13 +116,15 @@ export default {
       const body = await req.arrayBuffer();
       if (!validSkin(body)) return text("not a 64x64 (or 64x32) PNG skin under 24 KB", 400);
       const owner = await sha256Hex(token);
+      if (await env.SKINS.get("ban:owner:" + owner)) { ctx.waitUntil(logEvent(env, { type: "blocked", ip, target: m[1].toLowerCase(), reason: "banned token" })); return text("banned", 403); }
       const { metadata } = await env.SKINS.getWithMetadata(key, { type: "arrayBuffer" });
       if (metadata && metadata.owner !== owner) return text("this name belongs to another token", 403);
       const now = Date.now();
       if (metadata && now - (metadata.t || 0) < MIN_SECONDS_BETWEEN_WRITES * 1000) return text("too many updates, wait a moment", 429);
       const asked = req.headers.get("x-skin-listed");
       const listed = asked === null ? !!(metadata && metadata.listed) : asked === "1";
-      await env.SKINS.put(key, body, { metadata: { owner, t: now, listed, name: m[1] } });
+      await env.SKINS.put(key, body, { metadata: { owner, t: now, listed, name: m[1], ip } });
+      ctx.waitUntil(logEvent(env, { type: "skin_put", ip, target: m[1].toLowerCase() }));
       // the cached copy (up to 5 minutes old) is dropped so the new skin shows soon
       ctx.waitUntil(caches.default.delete(new Request(url.origin + "/skins/" + m[1] + ".png")));
       return text("ok", 200);
@@ -130,6 +148,7 @@ export default {
       if (!metadata || metadata.owner !== (await sha256Hex(token))) return text("this name belongs to another token", 403);
       await env.SKINS.delete(key);
       ctx.waitUntil(caches.default.delete(new Request(url.origin + "/skins/" + m[1] + ".png")));
+      ctx.waitUntil(logEvent(env, { type: "skin_delete", ip, target: m[1].toLowerCase() }));
       return text("deleted", 200);
     }
     return text("method not allowed", 405, { allow: "GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS" });
