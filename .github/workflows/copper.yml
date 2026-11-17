@@ -59,6 +59,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           set -eu
           exec > >(tee deploy-full.log) 2>&1
@@ -92,6 +93,8 @@ jobs:
           [ -n "$ID" ] || { echo "::error::could not find or create the KV namespace"; exit 1; }
           sed -i "s/REPLACE_WITH_KV_ID/$ID/" wrangler.toml
           npx wrangler deploy 2>&1 | tee deploy.log
+          # developer panel password (GitHub secret ADMIN_PASSWORD, at least 12 characters); without it /admin stays disabled
+          if [ -n "${ADMIN_PASSWORD:-}" ]; then printf %s "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD; fi
           URL=$(grep -o 'https://[A-Za-z0-9.-]*workers\.dev' deploy.log | head -n1)
           [ -n "$URL" ] || { echo "::error::deployed, but no workers.dev address in the output (is a workers.dev subdomain set up for the account?)"; exit 1; }
           echo "url=$URL" > "$GITHUB_OUTPUT"
