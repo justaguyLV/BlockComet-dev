@@ -1,0 +1,23 @@
+{
+ "placement": {},
+ "compatibility_date": "2024-11-01",
+ "compatibility_flags": [],
+ "usage_model": "standard",
+ "tags": [],
+ "tail_consumers": [],
+ "logpush": false,
+ "annotations": {
+  "workers/triggered_by": "secret"
+ },
+ "bindings": [
+  {
+   "name": "ADMIN_PASSWORD",
+   "type": "secret_text"
+  },
+  {
+   "name": "SKINS",
+   "namespace_id": "d6527122857045908ec2af524f7a15af",
+   "type": "kv_namespace"
+  }
+ ]
+}
