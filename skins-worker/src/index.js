@@ -16,6 +16,31 @@ const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers
 const GALLERY_MAX = 40;
 const GALLERY_ROUNDS = 6;
 
+// What the service can see about a client from the request itself (used by the developer panel only): the app's User-Agent
+// (an Android HTTP client usually names the phone model and the Android version) and Cloudflare's approximate location.
+const parseUA = (ua) => { const m = /Android\s+([\d.]+);\s*([^;)]+?)(?:\s+Build\/|[;)])/.exec(ua || ""); return m ? { os: "Android " + m[1], dv: m[2].trim().slice(0, 40) } : { os: "", dv: "" }; };
+function clientInfo(req) {
+  const ua = (req.headers.get("user-agent") || "").slice(0, 120);
+  const cf = req.cf || {};
+  return { ua, ...parseUA(ua), c: String(cf.country || ""), cy: String(cf.city || "").slice(0, 40), asn: String(cf.asnOrganization || "").slice(0, 40) };
+}
+const CLIENT_REFRESH_MS = 6 * 3600 * 1000;
+// One record per IP ("cl:<ip>"): first seen, last seen, device, location, and the player names that published a skin from it.
+// Written at most once per 6 hours per IP (plus when a new name shows up), so the free KV write quota is not used up.
+async function touchClient(env, ip, info, name) {
+  try {
+    if (!ip) return;
+    const key = "cl:" + ip, now = Date.now();
+    const { metadata } = await env.SKINS.getWithMetadata(key);
+    const old = metadata || {};
+    const names = Array.isArray(old.nm) ? old.nm.slice() : [];
+    const isNew = !!name && !names.includes(name);
+    if (isNew) names.push(name);
+    if (metadata && now - (old.l || 0) < CLIENT_REFRESH_MS && !isNew) return;
+    await env.SKINS.put(key, "1", { expirationTtl: 120 * 24 * 3600, metadata: { f: old.f || now, l: now, ua: info.ua, os: info.os, dv: info.dv, c: info.c, cy: info.cy, asn: info.asn, nm: names.slice(-5) } });
+  } catch (e) { /* never break a request */ }
+}
+
 const text = (body, status = 200, extra = {}) => new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8", ...CORS, ...extra } });
 
 const json = (data, extra = {}) => new Response(JSON.stringify(data), { headers: { "content-type": "application/json; charset=utf-8", ...CORS, ...extra } });
@@ -80,6 +105,7 @@ export default {
       if (!(await env.SKINS.get("seen:" + ip))) { await env.SKINS.put("seen:" + ip, "1", { expirationTtl: 60 }); ctx.waitUntil(logEvent(env, { type: "blocked", ip, target: "ip", reason: url.pathname.slice(0, 60) })); }
       return text("banned", 403);
     }
+    if (ip && req.method !== "PUT" && url.pathname !== "/") ctx.waitUntil(touchClient(env, ip, clientInfo(req), ""));
     if (url.pathname === "/") return text("BlockComet skin registry");
     // for the launcher to ask later whether a player is banned: GET /status/<name> -> {"banned":true|false}
     const st = url.pathname.match(/^\/status\/([A-Za-z0-9_]{3,16})$/);
@@ -123,7 +149,9 @@ export default {
       if (metadata && now - (metadata.t || 0) < MIN_SECONDS_BETWEEN_WRITES * 1000) return text("too many updates, wait a moment", 429);
       const asked = req.headers.get("x-skin-listed");
       const listed = asked === null ? !!(metadata && metadata.listed) : asked === "1";
-      await env.SKINS.put(key, body, { metadata: { owner, t: now, listed, name: m[1], ip } });
+      const info = clientInfo(req);
+      await env.SKINS.put(key, body, { metadata: { owner, t: now, listed, name: m[1], ip, f: (metadata && (metadata.f || metadata.t)) || now, c: info.c, cy: info.cy, dv: info.dv, os: info.os } });
+      ctx.waitUntil(touchClient(env, ip, info, m[1].toLowerCase()));
       ctx.waitUntil(logEvent(env, { type: "skin_put", ip, target: m[1].toLowerCase() }));
       // the cached copy (up to 5 minutes old) is dropped so the new skin shows soon
       ctx.waitUntil(caches.default.delete(new Request(url.origin + "/skins/" + m[1] + ".png")));

@@ -80,7 +80,67 @@ async function api(req, env, ctx, url, ip) {
     const q = (url.searchParams.get("q") || "").toLowerCase();
     if (q && !/^[a-z0-9_]{1,16}$/.test(q)) return jsonReply({ players: [] });
     const page = await env.SKINS.list({ prefix: "skin:" + q, limit: 200 });
-    return jsonReply({ players: page.keys.map((k) => ({ name: (k.metadata || {}).name || k.name.slice(5), t: (k.metadata || {}).t || 0, listed: !!(k.metadata || {}).listed, ip: (k.metadata || {}).ip || "" })) });
+    return jsonReply({ players: page.keys.map((k) => ({ name: (k.metadata || {}).name || k.name.slice(5), t: (k.metadata || {}).t || 0, listed: !!(k.metadata || {}).listed, ip: (k.metadata || {}).ip || "", f: (k.metadata || {}).f || (k.metadata || {}).t || 0, c: (k.metadata || {}).c || "", cy: (k.metadata || {}).cy || "", dv: (k.metadata || {}).dv || "", os: (k.metadata || {}).os || "" })) });
+  }
+  if (p === "player") {
+    const n = (url.searchParams.get("name") || "").toLowerCase();
+    if (!/^[a-z0-9_]{3,16}$/.test(n)) return jsonReply({ error: "bad name" }, 400);
+    const l = await env.SKINS.list({ prefix: "skin:" + n, limit: 5 });
+    const k = l.keys.find((x) => x.name === "skin:" + n);
+    const m = (k && k.metadata) || null;
+    let ban = null;
+    try { const b = await env.SKINS.get("ban:name:" + n); if (b) ban = JSON.parse(b); } catch (e) { ban = {}; }
+    let client = null, ipBanned = false, sameIp = [];
+    if (m && m.ip) {
+      const c = await env.SKINS.list({ prefix: "cl:" + m.ip, limit: 5 });
+      const ck = c.keys.find((x) => x.name === "cl:" + m.ip);
+      client = ck ? ck.metadata || {} : null;
+      ipBanned = !!(await env.SKINS.get("ban:ip:" + m.ip));
+      const all = await env.SKINS.list({ prefix: "skin:", limit: 1000 });
+      sameIp = all.keys.filter((x) => x.metadata && x.metadata.ip === m.ip && x.name !== "skin:" + n).map((x) => x.metadata.name || x.name.slice(5)).slice(0, 20);
+    }
+    const lp = await env.SKINS.list({ prefix: "log:", limit: 100 });
+    const events = [];
+    for (const lk of lp.keys) {
+      if (events.length >= 20) break;
+      const v = await env.SKINS.get(lk.name);
+      if (!v) continue;
+      try { const e = JSON.parse(v); if (e.target === n || (m && m.ip && e.ip === m.ip)) events.push(e); } catch (e) { /* skip */ }
+    }
+    const skin = m ? { t: m.t || 0, f: m.f || m.t || 0, listed: !!m.listed, ip: m.ip || "", c: m.c || "", cy: m.cy || "", dv: m.dv || "", os: m.os || "" } : null;
+    return jsonReply({ name: n, skin, ban, client, ipBanned, sameIp, events });
+  }
+  if (p === "clients") {
+    const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+    const page = await env.SKINS.list({ prefix: "cl:", limit: 1000 });
+    let out = page.keys.map((k) => ({ ip: k.name.slice(3), ...(k.metadata || {}) }));
+    if (q) out = out.filter((c) => (c.ip + " " + (c.nm || []).join(" ") + " " + (c.dv || "") + " " + (c.os || "") + " " + (c.c || "") + " " + (c.cy || "") + " " + (c.asn || "")).toLowerCase().includes(q));
+    out.sort((a, b) => (b.l || 0) - (a.l || 0));
+    const bl = await env.SKINS.list({ prefix: "ban:ip:", limit: 1000 });
+    const bset = new Set(bl.keys.map((k) => k.name.slice(7)));
+    return jsonReply({ clients: out.slice(0, 200).map((c) => ({ ...c, banned: bset.has(c.ip) })), total: page.keys.length });
+  }
+  if (p === "stats") {
+    const [sk, cl, bn] = await Promise.all([env.SKINS.list({ prefix: "skin:", limit: 1000 }), env.SKINS.list({ prefix: "cl:", limit: 1000 }), env.SKINS.list({ prefix: "ban:", limit: 1000 })]);
+    const now = Date.now(), day = 86400000;
+    const countries = {}, devices = {};
+    let new24 = 0, new7 = 0, act24 = 0;
+    for (const k of cl.keys) {
+      const md = k.metadata || {};
+      if ((md.f || 0) > now - day) new24++;
+      if ((md.f || 0) > now - 7 * day) new7++;
+      if ((md.l || 0) > now - day) act24++;
+      if (md.c) countries[md.c] = (countries[md.c] || 0) + 1;
+      if (md.dv) devices[md.dv] = (devices[md.dv] || 0) + 1;
+    }
+    const top = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    return jsonReply({
+      players: sk.keys.length, listed: sk.keys.filter((k) => (k.metadata || {}).listed).length,
+      uploads24: sk.keys.filter((k) => ((k.metadata || {}).t || 0) > now - day).length,
+      clients: cl.keys.length, new24, new7, act24,
+      bannedNames: bn.keys.filter((k) => k.name.startsWith("ban:name:")).length, bannedIps: bn.keys.filter((k) => k.name.startsWith("ban:ip:")).length,
+      countries: top(countries), devices: top(devices),
+    });
   }
   if (p === "bans") {
     const page = await env.SKINS.list({ prefix: "ban:", limit: 500 });
@@ -142,7 +202,7 @@ async function api(req, env, ctx, url, ip) {
 }
 
 function page(nonce, authed) {
-  const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+  const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
   const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>BlockComet Admin</title>
 <style nonce="${nonce}">
 :root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--tx:#e8eaf0;--mut:#8b93a5;--ac:#f5c518;--bad:#ff5d5d;--ok:#4cd964}
@@ -153,7 +213,7 @@ button{background:var(--ac);color:#000;border:0;font-weight:600;cursor:pointer}b
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}.row>input{flex:1;min-width:120px}.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{flex:1}
 .tabs button.on{background:var(--ac);color:#000}.tabs button:not(.on){background:#262b36;color:var(--tx)}
 .it{border-bottom:1px solid var(--line);padding:8px 0;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.it:last-child{border:0}
-.m{color:var(--mut);font-size:12px;direction:ltr;unicode-bidi:plaintext;word-break:break-all}.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:#262b36}.bad{color:var(--bad)}.ok{color:var(--ok)}
+.m{color:var(--mut);font-size:12px;direction:ltr;unicode-bidi:plaintext;word-break:break-all}.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:#262b36}.bad{color:var(--bad)}.ok{color:var(--ok)}.v{direction:ltr;unicode-bidi:plaintext;word-break:break-all;text-align:left}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}.grid .card{margin:0}.big{font-size:24px;font-weight:700;color:var(--ac)}.sk{image-rendering:pixelated;width:192px;height:192px;background:#0b0d11;border:1px solid var(--line);border-radius:8px}
 </style></head><body><h1>BlockComet — لوحة المطورين</h1><div id="app"></div>
 <script nonce="${nonce}">
 const A=document.getElementById("app");
@@ -176,11 +236,35 @@ A.append(el("div",{class:"card"},el("div",{class:"row"},pw,el("button",{onclick:
 function panelJs() {
   return `
 const TY={ban_name:"حظر لاعب",ban_ip:"حظر IP",unban_name:"فك حظر لاعب",unban_ip:"فك حظر IP",skin_put:"رفع/تحديث سكن",skin_delete:"حذف سكن",admin_delete_skin:"حذف سكن (أدمن)",blocked:"محاولة محظورة",admin_login:"دخول أدمن",admin_login_failed:"دخول فاشل"};
-const tabs=el("div",{class:"tabs"});const box=el("div");A.append(tabs,box);let cur="logs";
-const draw=()=>{tabs.replaceChildren(...[["logs","السجل"],["players","اللاعبون"],["bans","المحظورون"]].map(([k,n])=>el("button",{class:cur===k?"on":"",onclick:()=>{cur=k;draw();show()}},n)))};
-async function show(){box.replaceChildren(el("div",{class:"m"},"..."));({logs:logs,players:players,bans:bans})[cur]()}
+const ago=t=>{if(!t)return "—";const s=Math.floor((Date.now()-t)/1000);if(s<60)return "قبل لحظات";if(s<3600)return "قبل "+Math.floor(s/60)+" دقيقة";if(s<86400)return "قبل "+Math.floor(s/3600)+" ساعة";return "قبل "+Math.floor(s/86400)+" يوم"};
+const devOf=o=>[o.dv,o.os].filter(Boolean).join(" · ")||"غير معروف";
+const locOf=o=>[o.cy,o.c].filter(Boolean).join(", ")||"—";
+const tabs=el("div",{class:"tabs"});const box=el("div");A.append(tabs,box);let cur="stats";
+const draw=()=>{tabs.replaceChildren(...[["stats","الإحصاءات"],["logs","السجل"],["players","اللاعبون"],["clients","الأجهزة"],["bans","المحظورون"]].map(([k,n])=>el("button",{class:cur===k?"on":"",onclick:()=>{cur=k;draw();show()}},n)))};
+async function show(){box.replaceChildren(el("div",{class:"m"},"..."));({stats:stats,logs:logs,players:players,clients:clients,bans:bans})[cur]()}
+const kv=(k,v)=>el("div",{class:"it"},el("span",{class:"m"},k),el("span",{class:"v"},v||"—"));
+const stat=(n,v)=>el("div",{class:"card"},el("div",{class:"m"},n),el("div",{class:"big"},String(v)));
+async function stats(){const d=await call("stats");box.replaceChildren(el("div",{class:"grid"},stat("اللاعبون (سكنات)",d.players),stat("ظاهرة في المعرض",d.listed),stat("الأجهزة (IP)",d.clients),stat("أجهزة جديدة خلال 24 ساعة",d.new24),stat("أجهزة جديدة خلال 7 أيام",d.new7),stat("نشطة خلال 24 ساعة",d.act24),stat("سكنات مرفوعة خلال 24 ساعة",d.uploads24),stat("محظورون (أسماء / IP)",d.bannedNames+" / "+d.bannedIps)),el("div",{class:"card"},el("div",{class:"m"},"أكثر الدول"),...(d.countries||[]).map(([c,n])=>kv(c,n))),el("div",{class:"card"},el("div",{class:"m"},"أكثر الأجهزة"),...(d.devices||[]).map(([c,n])=>kv(c,n))),el("div",{class:"m"},"الأرقام تحسب من سجل الأجهزة اللي اتصلت بالخدمة (آخر 120 يومًا)."))}
 async function logs(){const d=await call("logs");box.replaceChildren(el("div",{class:"row"},el("button",{class:"s",onclick:show},"تحديث"),el("button",{class:"s",onclick:async()=>{await fetch("/admin/logout",{method:"POST",headers:{"x-admin":"1"},credentials:"same-origin"});location.reload()}},"خروج")),el("div",{class:"card"},...(d.logs||[]).map(l=>el("div",{class:"it"},el("div",{},el("span",{class:"tag"},TY[l.type]||l.type)," ",l.target||"",l.reason?" — "+l.reason:""),el("div",{class:"m"},when(l.t)+"  "+(l.ip||""))))))}
-async function players(){const q=el("input",{placeholder:"ابدأ باسم اللاعب"});const list=el("div",{class:"card"});const load=async()=>{const d=await call("players?q="+encodeURIComponent(q.value.trim()));list.replaceChildren(...(d.players||[]).map(p=>el("div",{class:"it"},el("div",{},p.name,el("div",{class:"m"},when(p.t)+"  IP: "+(p.ip||"—"))),el("div",{class:"row"},el("button",{class:"d",onclick:async()=>{const r=prompt("سبب الحظر؟");if(r===null)return;const both=p.ip&&confirm("تحظر الـ IP "+p.ip+" كمان؟");await call("ban",{kind:"name",value:p.name,reason:r,alsoIp:!!both});load()}},"حظر"),el("button",{class:"s",onclick:async()=>{if(confirm("حذف السكن؟")){await call("delete-skin",{value:p.name});load()}}},"حذف السكن")))))};q.addEventListener("input",()=>{clearTimeout(window._t);window._t=setTimeout(load,350)});box.replaceChildren(el("div",{class:"row"},q),list);load()}
+async function banName(name,ip){const r=prompt("سبب الحظر؟");if(r===null)return false;const both=ip&&confirm("تحظر الـ IP "+ip+" كمان؟");const x=await call("ban",{kind:"name",value:name,reason:r,alsoIp:!!both});if(x.error)alert(x.error);return true}
+async function banIp(ip){const r=prompt("سبب حظر الـ IP؟");if(r===null)return false;const x=await call("ban",{kind:"ip",value:ip,reason:r});if(x.error)alert(x.error);return true}
+async function detail(name){box.replaceChildren(el("div",{class:"m"},"..."));const d=await call("player?name="+encodeURIComponent(name));
+if(d.error){box.replaceChildren(el("div",{class:"card"},d.error));return}
+const s=d.skin,c=d.client||{};const back=el("button",{class:"s",onclick:()=>{cur="players";draw();show()}},"رجوع");
+const acts=el("div",{class:"row"},back);
+if(d.ban){acts.append(el("button",{class:"s",onclick:async()=>{await call("unban",{kind:"name",value:name});detail(name)}},"فك حظر اللاعب"))}
+else{acts.append(el("button",{class:"d",onclick:async()=>{if(await banName(name,s&&s.ip))detail(name)}},"حظر اللاعب"))}
+if(s&&s.ip){if(d.ipBanned)acts.append(el("button",{class:"s",onclick:async()=>{await call("unban",{kind:"ip",value:s.ip});detail(name)}},"فك حظر الـ IP"));else acts.append(el("button",{class:"d",onclick:async()=>{if(await banIp(s.ip))detail(name)}},"حظر الـ IP فقط"))}
+if(s)acts.append(el("button",{class:"s",onclick:async()=>{if(confirm("حذف السكن؟")){await call("delete-skin",{value:name});detail(name)}}},"حذف السكن"));
+const info=el("div",{class:"card"},kv("الاسم",name),kv("الحالة",d.ban?"محظور"+(d.ban.reason?" — "+d.ban.reason:"")+(d.ban.t?" ("+when(d.ban.t)+")":""):"نشط"));
+if(s){info.append(kv("أول ظهور للسكن",when(s.f)+" ("+ago(s.f)+")"),kv("آخر تحديث للسكن",when(s.t)+" ("+ago(s.t)+")"),kv("ظاهر في المعرض",s.listed?"نعم":"لا"),kv("الـ IP",s.ip+(d.ipBanned?" (محظور)":"")),kv("الموقع التقريبي",locOf(c.c||c.cy?c:s)),kv("الجهاز",devOf(c.dv||c.os?c:s)))}
+if(d.client){info.append(kv("مزود الإنترنت",c.asn),kv("أول اتصال من هذا الجهاز/الشبكة",when(c.f)+" ("+ago(c.f)+")"),kv("آخر اتصال",when(c.l)+" ("+ago(c.l)+")"),kv("User-Agent",c.ua))}
+if((d.sameIp||[]).length)info.append(kv("أسماء أخرى من نفس الـ IP",d.sameIp.join(", ")));
+const head=[acts];if(s){const img=el("img",{class:"sk",alt:""});img.setAttribute("src","/skins/"+name+".png");head.push(el("div",{class:"card"},img))}
+const ev=el("div",{class:"card"},el("div",{class:"m"},"آخر الأحداث المرتبطة"),...(d.events||[]).map(l=>el("div",{class:"it"},el("div",{},el("span",{class:"tag"},TY[l.type]||l.type)," ",l.target||"",l.reason?" — "+l.reason:""),el("div",{class:"m"},when(l.t)+"  "+(l.ip||"")))));
+box.replaceChildren(...head,info,ev)}
+async function players(){const q=el("input",{placeholder:"ابدأ باسم اللاعب"});const list=el("div",{class:"card"});const load=async()=>{const d=await call("players?q="+encodeURIComponent(q.value.trim()));list.replaceChildren(...(d.players||[]).map(p=>el("div",{class:"it"},el("div",{},p.name,el("div",{class:"m"},"أول ظهور: "+when(p.f)+"  ·  IP: "+(p.ip||"—")),el("div",{class:"m"},devOf(p)+"  ·  "+locOf(p))),el("div",{class:"row"},el("button",{onclick:()=>detail(p.name)},"تفاصيل"),el("button",{class:"d",onclick:async()=>{if(await banName(p.name,p.ip))load()}},"حظر")))))};q.addEventListener("input",()=>{clearTimeout(window._t);window._t=setTimeout(load,350)});box.replaceChildren(el("div",{class:"row"},q),list);load()}
+async function clients(){const q=el("input",{placeholder:"بحث: IP، اسم، جهاز، دولة، مدينة"});const list=el("div",{class:"card"});const note=el("div",{class:"m"},"أول ظهور = أول مرة اتصل فيها اللانشر بالخدمة من هذا الـ IP (قريب من وقت أول تشغيل، مو وقت التحميل الفعلي).");const load=async()=>{const d=await call("clients?q="+encodeURIComponent(q.value.trim()));list.replaceChildren(...(d.clients||[]).map(c=>el("div",{class:"it"},el("div",{},el("span",{class:"v"},c.ip),c.banned?el("span",{class:"tag bad"},"محظور"):"",el("div",{class:"m"},devOf(c)+"  ·  "+locOf(c)+(c.asn?"  ·  "+c.asn:"")),el("div",{class:"m"},"أول ظهور: "+when(c.f)+"  ·  آخر ظهور: "+ago(c.l)),(c.nm||[]).length?el("div",{class:"m"},"لاعبون: "+c.nm.join(", ")):""),el("div",{class:"row"},c.banned?el("button",{class:"s",onclick:async()=>{await call("unban",{kind:"ip",value:c.ip});load()}},"فك حظر"):el("button",{class:"d",onclick:async()=>{if(await banIp(c.ip))load()}},"حظر IP")))))};q.addEventListener("input",()=>{clearTimeout(window._t);window._t=setTimeout(load,350)});box.replaceChildren(el("div",{class:"row"},q),note,list);load()}
 async function bans(){const d=await call("bans");const v=el("input",{placeholder:"اسم لاعب أو IP"});const r=el("input",{placeholder:"السبب"});const add=k=>async()=>{if(!v.value.trim())return;const x=await call("ban",{kind:k,value:v.value.trim(),reason:r.value});if(x.error)alert(x.error);else bans()};
 box.replaceChildren(el("div",{class:"card"},el("div",{class:"row"},v,r),el("div",{class:"row"},el("button",{class:"d",onclick:add("name")},"حظر لاعب"),el("button",{class:"d",onclick:add("ip")},"حظر IP"))),el("div",{class:"card"},...(d.bans||[]).map(b=>el("div",{class:"it"},el("div",{},el("span",{class:"tag"},b.kind==="ip"?"IP":"لاعب")," ",b.value,el("div",{class:"m"},when(b.t)+(b.reason?"  "+b.reason:""))),el("button",{class:"s",onclick:async()=>{await call("unban",{kind:b.kind,value:b.value});bans()}},"فك")))))}
 draw();show();`;

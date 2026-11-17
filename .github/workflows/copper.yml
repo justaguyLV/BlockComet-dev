@@ -23,6 +23,10 @@ on:
         description: "Skip the build; run the latest released APK in the emulator"
         type: boolean
         default: false
+      only_skins:
+        description: "Only redeploy the skin service (no APK build, no emulator)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -179,7 +183,7 @@ jobs:
 
   build:
     needs: skins-api
-    if: ${{ always() && !inputs.only_emulator }}
+    if: ${{ always() && !inputs.only_emulator && !inputs.only_skins }}
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
