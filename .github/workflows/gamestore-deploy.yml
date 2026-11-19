@@ -18,31 +18,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: check-token
+      - name: kv-namespace
         run: |
-          curl -sf -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify -o /dev/null || curl -sf -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify -o /dev/null
-      - name: check-workers
-        run: |
-          curl -sf -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts -o /dev/null
-      - name: check-d1
-        run: |
-          curl -sf -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database -o /dev/null
-      - name: check-r2
-        run: |
-          curl -sf -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/r2/buckets -o /dev/null
-      - name: r2-bucket
-        if: always()
-        run: npx -y wrangler@4 r2 bucket create game-store-files > out.txt 2>&1 || grep -qi "already exists" out.txt
-      - name: d1-create
-        run: npx -y wrangler@4 d1 create game-store > out.txt 2>&1 || grep -qi "already exists" out.txt
-      - name: d1-info
-        run: npx -y wrangler@4 d1 info game-store --json > info.json
-      - name: d1-id
-        run: |
-          ID=$(jq -r '.uuid // .id // .database_id' info.json)
+          A="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces"
+          H="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          ID=$(curl -sf -H "$H" "$A?per_page=100" | jq -r '.result[] | select(.title=="game-store-STORE") | .id')
+          if [ -z "$ID" ]; then
+            ID=$(curl -sf -X POST -H "$H" -H "Content-Type: application/json" -d '{"title":"game-store-STORE"}' "$A" | jq -r '.result.id')
+          fi
           [ -n "$ID" ] && [ "$ID" != "null" ]
-          sed -i "s/REPLACE_DB_ID/$ID/" wrangler.toml
-      - name: d1-schema
-        run: npx -y wrangler@4 d1 execute game-store --remote --file=schema.sql
+          sed -i "s/REPLACE_KV_ID/$ID/" wrangler.toml
       - name: deploy
         run: npx -y wrangler@4 deploy
+      - name: admin-secret
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: printf '%s' "$ADMIN_PASSWORD" | npx -y wrangler@4 secret put ADMIN_PASSWORD
