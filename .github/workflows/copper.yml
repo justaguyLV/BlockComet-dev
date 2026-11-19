@@ -64,6 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          STAFF_ACCOUNTS: ${{ secrets.STAFF_ACCOUNTS }}
         run: |
           set -eu
           exec > >(tee deploy-full.log) 2>&1
@@ -99,6 +100,8 @@ jobs:
           npx wrangler deploy 2>&1 | tee deploy.log
           # developer panel password (GitHub secret ADMIN_PASSWORD, at least 12 characters); without it /admin stays disabled
           if [ -n "${ADMIN_PASSWORD:-}" ]; then printf %s "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD; fi
+          # staff panel accounts (GitHub secret STAFF_ACCOUNTS = name:password,name2:password2 ; passwords at least 12 characters)
+          if [ -n "${STAFF_ACCOUNTS:-}" ]; then printf %s "$STAFF_ACCOUNTS" | npx wrangler secret put STAFF_ACCOUNTS; fi
           URL=$(grep -o 'https://[A-Za-z0-9.-]*workers\.dev' deploy.log | head -n1)
           [ -n "$URL" ] || { echo "::error::deployed, but no workers.dev address in the output (is a workers.dev subdomain set up for the account?)"; exit 1; }
           echo "url=$URL" > "$GITHUB_OUTPUT"
