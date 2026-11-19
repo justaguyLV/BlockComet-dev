@@ -345,16 +345,66 @@ function page(nonce, sess, host) {
   const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self' wss://${host}; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
   const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>BlockComet Admin</title>
 <style nonce="${nonce}">
-:root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--tx:#e8eaf0;--mut:#8b93a5;--ac:#f5c518;--bad:#ff5d5d;--ok:#4cd964}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,sans-serif;padding:12px;max-width:900px;margin:auto}
-h1{font-size:18px;color:var(--ac);margin:6px 0 12px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
-input,button{font:inherit;border-radius:8px;border:1px solid var(--line);background:#0f1115;color:var(--tx);padding:9px 10px}
-button{background:var(--ac);color:#000;border:0;font-weight:600;cursor:pointer}button.s{background:#262b36;color:var(--tx)}button.d{background:var(--bad);color:#fff}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}.row>input{flex:1;min-width:120px}.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{flex:1}
-.tabs button.on{background:var(--ac);color:#000}.tabs button:not(.on){background:#262b36;color:var(--tx)}
-.it{border-bottom:1px solid var(--line);padding:8px 0;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.it:last-child{border:0}
-.m{color:var(--mut);font-size:12px;direction:ltr;unicode-bidi:plaintext;word-break:break-all}.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:#262b36}.bad{color:var(--bad)}.ok{color:var(--ok)}.v{direction:ltr;unicode-bidi:plaintext;word-break:break-all;text-align:left}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}.grid .card{margin:0}.big{font-size:24px;font-weight:700;color:var(--ac)}.chat{height:55vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--card);margin-bottom:8px}.msg{margin-bottom:8px;max-width:85%;padding:6px 10px;border-radius:10px;background:#262b36}.msg.me{background:#3a3320;margin-inline-start:auto}.tx{white-space:pre-wrap;word-break:break-word}.sk{image-rendering:pixelated;width:192px;height:192px;background:#0b0d11;border:1px solid var(--line);border-radius:8px}
-</style></head><body><h1>BlockComet — ${isStaff ? "لوحة الستاف" : "لوحة المطورين"}</h1><div id="app"></div>
+:root{--void:#07060f;--ink:#ecebff;--mut:#9a98c0;--glass:rgba(22,18,48,.62);--line:rgba(160,150,255,.17);--vio:#8b5cf6;--cy:#5ee7ff;--pink:#ff4fa3;--ok:#3dffb2;--bad:#ff5a7a;--r:18px;color-scheme:dark}
+*{box-sizing:border-box;scrollbar-color:#3a3470 transparent}
+html{background:var(--void)}
+body{margin:0;min-height:100vh;color:var(--ink);font:15px/1.55 "SF Arabic","Segoe UI","Noto Sans Arabic",Tahoma,system-ui,sans-serif;padding:max(12px,env(safe-area-inset-top)) 14px 32px;position:relative;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:-20%;z-index:-2;background:radial-gradient(40% 35% at 15% 10%,rgba(139,92,246,.5),transparent 70%),radial-gradient(35% 30% at 90% 22%,rgba(94,231,255,.26),transparent 70%),radial-gradient(45% 40% at 70% 95%,rgba(255,79,163,.22),transparent 70%),linear-gradient(180deg,#0c0922,#07060f 62%);animation:drift 40s ease-in-out infinite alternate}
+body::after{content:"";position:fixed;inset:0;z-index:-1;opacity:.55;pointer-events:none;background-image:radial-gradient(1px 1px at 20px 30px,#fff,transparent),radial-gradient(1px 1px at 120px 80px,#cfeeff,transparent),radial-gradient(1.6px 1.6px at 200px 160px,#fff,transparent),radial-gradient(1px 1px at 60px 190px,#e0d4ff,transparent),radial-gradient(1px 1px at 170px 20px,#fff,transparent);background-size:240px 240px}
+@keyframes drift{to{transform:translate3d(-4%,3%,0) scale(1.08)}}
+::selection{background:rgba(139,92,246,.55)}
+.top{max-width:920px;margin:0 auto 14px;display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--r);background:var(--glass);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);position:relative;overflow:hidden}
+.top::after{content:"";position:absolute;top:0;left:-45%;width:40%;height:2px;background:linear-gradient(90deg,transparent,var(--cy),#fff,transparent);animation:streak 1.8s cubic-bezier(.2,.7,.2,1) .4s 1 both}
+@keyframes streak{to{left:110%}}
+.logo{width:42px;height:42px;flex:none;filter:drop-shadow(0 0 10px rgba(94,231,255,.5))}
+.ttl h1{margin:0;font-size:20px;font-weight:800;line-height:1.2}
+.ttl span{color:var(--mut);font-size:13px}
+.live{margin-inline-start:auto;width:10px;height:10px;border-radius:50%;background:#4b4875;flex:none}
+.live.on{background:var(--ok);animation:pulse 2.4s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(61,255,178,.55)}70%,100%{box-shadow:0 0 0 9px rgba(61,255,178,0)}}
+#app{max-width:920px;margin:0 auto}
+.card{position:relative;background:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 14px 34px -16px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05)}
+input{font:inherit;color:var(--ink);background:rgba(8,6,24,.62);border:1px solid var(--line);border-radius:12px;padding:10px 13px;min-height:44px;outline:none;transition:border-color .15s,box-shadow .15s}
+input::placeholder{color:#7471a0}
+input:focus-visible{border-color:var(--cy);box-shadow:0 0 0 3px rgba(94,231,255,.18)}
+input[type=checkbox]{flex:none;width:22px;height:22px;min-height:0;padding:0;accent-color:var(--vio)}
+button{font:inherit;font-weight:700;color:#0b0820;border:0;border-radius:12px;padding:10px 16px;min-height:44px;cursor:pointer;background:linear-gradient(135deg,var(--cy),var(--vio));box-shadow:0 8px 20px -8px rgba(139,92,246,.75);transition:transform .12s,filter .15s}
+button:hover{filter:brightness(1.12)}
+button:active{transform:translateY(1px) scale(.98)}
+button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+button.s{background:rgba(255,255,255,.07);color:var(--ink);border:1px solid var(--line);box-shadow:none}
+button.d{background:rgba(255,90,122,.14);color:#ffa3b6;border:1px solid rgba(255,90,122,.45);box-shadow:none}button.d:hover{background:linear-gradient(135deg,var(--pink),var(--bad));color:#fff;filter:none}
+.it .row{margin:0}.it .row button{min-height:38px;padding:6px 13px;font-size:13.5px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.row:last-child{margin-bottom:0}.row>input{flex:1;min-width:130px}
+.tabs{display:flex;gap:4px;overflow-x:auto;padding:5px;margin-bottom:14px;border:1px solid var(--line);border-radius:999px;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:0 0 auto;min-height:40px;padding:8px 17px;border-radius:999px;background:transparent;color:var(--mut);box-shadow:none;border:0;white-space:nowrap}
+.tabs button.on{background:linear-gradient(135deg,rgba(94,231,255,.95),rgba(139,92,246,.98));color:#0b0820;box-shadow:0 0 24px -4px rgba(94,231,255,.7)}
+.tabs button.s{margin-inline-start:auto}
+.it{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.it:last-child{border:0}
+label.it{cursor:pointer}
+.m{color:var(--mut);font-size:12.5px;direction:ltr;unicode-bidi:plaintext;overflow-wrap:anywhere}
+.tag{display:inline-block;font-size:11.5px;padding:2px 10px;border-radius:999px;background:rgba(139,92,246,.2);color:#d3c7ff;border:1px solid rgba(139,92,246,.38)}
+.tag.bad{background:rgba(255,90,122,.15);color:#ff9fb3;border-color:rgba(255,90,122,.42)}
+.bad{color:var(--bad)}.ok{color:var(--ok)}
+.v{direction:ltr;unicode-bidi:plaintext;overflow-wrap:anywhere;text-align:left}.it>div>.v{font-weight:700;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}.grid .card{margin:0;padding:14px}
+@media(min-width:640px){.grid{grid-template-columns:repeat(4,1fr)}}
+.big{font-size:28px;font-weight:800;line-height:1.2;color:var(--cy);text-shadow:0 0 26px rgba(94,231,255,.4);font-variant-numeric:tabular-nums}
+.v.big{font-size:21px;letter-spacing:.06em;user-select:all;margin-top:6px}
+.chat{display:flex;flex-direction:column;height:58vh;min-height:260px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);padding:12px;background:rgba(10,8,30,.55);margin-bottom:10px}
+.msg{align-self:flex-end;margin-bottom:10px;max-width:86%;padding:8px 12px;border-radius:14px 14px 14px 4px;background:rgba(255,255,255,.06);border:1px solid var(--line)}
+.msg.me{background:linear-gradient(135deg,rgba(94,231,255,.16),rgba(139,92,246,.3));border-color:rgba(139,92,246,.45);align-self:flex-start;border-radius:14px 14px 4px 14px}
+.msg .m{margin-bottom:2px}.msg button{min-height:28px;padding:2px 10px;font-size:12px;margin-inline-start:8px}
+.tx{white-space:pre-wrap;word-break:break-word}
+.perms{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.perms .it{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);font-size:13.5px;flex-wrap:nowrap}.perms .it:last-child{border:1px solid var(--line)}.perms .it:has(input:checked){border-color:rgba(139,92,246,.65);background:rgba(139,92,246,.16)}.card>button{margin-top:8px}
+.sk{display:block;margin:0 auto;image-rendering:pixelated;width:192px;height:192px;border:1px solid var(--line);border-radius:14px;background:conic-gradient(#1c1842 25%,#120f30 0 50%,#1c1842 0 75%,#120f30 0) 0 0/16px 16px;box-shadow:0 0 30px -8px rgba(139,92,246,.6)}
+.out .top{max-width:420px;flex-direction:column;text-align:center;padding:30px 16px 24px;margin-top:9vh}
+.out .logo{width:76px;height:76px}.out .ttl h1{font-size:26px}
+.out #app{max-width:420px}
+@supports not (backdrop-filter:blur(1px)){.card,.top,.tabs{background:rgba(22,18,48,.94)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style><meta name="theme-color" content="#07060f"></head><body class="${authed ? "in" : "out"}"><header class="top"><svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#5ee7ff"/></linearGradient></defs><path d="M3 41 24 20" stroke="url(#lg)" stroke-width="3.5" stroke-linecap="round" opacity=".35"/><path d="M2 31 17 16" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" opacity=".6"/><path d="M12 43 28 27" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" opacity=".6"/><rect x="22" y="6" width="19" height="19" rx="5" transform="rotate(45 31.5 15.5)" fill="url(#lg)"/><rect x="28" y="12" width="7" height="7" rx="2" transform="rotate(45 31.5 15.5)" fill="#07060f" opacity=".35"/></svg><div class="ttl"><h1>BlockComet</h1><span>${isStaff ? "لوحة الستاف" : "لوحة المطورين"}</span></div>${authed ? '<span class="live" id="live" title="الشات"></span>' : ""}</header><div id="app"></div>
 <script nonce="${nonce}">
 const A=document.getElementById("app");
 const el=(t,a={},...k)=>{const e=document.createElement(t);for(const[x,v]of Object.entries(a)){if(x==="onclick")e.onclick=v;else if(x==="class")e.className=v;else e.setAttribute(x,v)}for(const c of k)e.append(c);return e};
@@ -426,7 +476,7 @@ if(can("ban")||(can("banip")&&can("ips"))){const v=el("input",{placeholder:can("
 parts.push(el("div",{class:"card"},el("div",{class:"row"},v,r),el("div",{class:"row"},can("ban")?el("button",{class:"d",onclick:add("name")},"حظر لاعب"):"",can("banip")&&can("ips")?el("button",{class:"d",onclick:add("ip")},"حظر IP"):"")))}
 parts.push(el("div",{class:"card"},...(d.bans||[]).map(b=>el("div",{class:"it"},el("div",{},el("span",{class:"tag"},b.kind==="ip"?"IP":"لاعب")," ",el("span",{class:"v"},b.value),el("div",{class:"m"},when(b.t)+(b.reason?"  "+b.reason:""))),can("unban")?el("button",{class:"s",onclick:async()=>{await call("unban",{kind:b.kind,value:b.value});FN.bans()}},"فك"):""))));
 box.replaceChildren(...parts)};
-const permBoxes=cur=>{const w=el("div",{});const cbs={};for(const k of Object.keys(PL)){const c=el("input",{type:"checkbox"});c.checked=!!cur[k];cbs[k]=c;w.append(el("label",{class:"it"},el("span",{},PL[k]),c))}return{w,get:()=>{const o={};for(const k in cbs)o[k]=cbs[k].checked;return o}}};
+const permBoxes=cur=>{const w=el("div",{class:"perms"});const cbs={};for(const k of Object.keys(PL)){const c=el("input",{type:"checkbox"});c.checked=!!cur[k];cbs[k]=c;w.append(el("label",{class:"it"},el("span",{},PL[k]),c))}return{w,get:()=>{const o={};for(const k in cbs)o[k]=cbs[k].checked;return o}}};
 const pwCard=(name,pw)=>el("div",{class:"card"},el("div",{},"كلمة سر "+name+" (انسخها الآن، ما تظهر مرة ثانية):"),el("div",{class:"v big"},pw));
 function editStaff(s){const pb=permBoxes(s.perms);const lim=el("input",{type:"number",min:"0",max:"1000",value:String(s.limit)});const off=el("input",{type:"checkbox"});off.checked=s.off;
 box.replaceChildren(el("div",{class:"card"},el("div",{},"تعديل: "+s.name),pb.w,el("label",{class:"it"},el("span",{},"حد الحظر بالساعة (0 = بلا حد)"),lim),el("label",{class:"it"},el("span",{},"موقوف"),off),el("div",{class:"row"},el("button",{onclick:async()=>{const x=await call("staff-save",{name:s.name,perms:pb.get(),limit:Number(lim.value),off:off.checked});if(x.error)alert(x.error);else FN.staff()}},"حفظ"),el("button",{class:"s",onclick:()=>FN.staff()},"رجوع"))))}
@@ -448,8 +498,8 @@ else if(d.type==="msg"){CH.msgs.push(d.msg);if(CH.msgs.length>300)CH.msgs.shift(
 else if(d.type==="del"){CH.msgs=CH.msgs.filter(m=>m.id!==d.id)}
 else if(d.type==="presence"){CH.online=d.online||[]}
 chatRender()};
-ws.onclose=async()=>{if(CH.ws===ws)CH.ws=null;const r=await call("ping").catch(()=>null);setTimeout(chatConnect,3000)};
-ws.onopen=()=>{clearInterval(CH.pi);CH.pi=setInterval(()=>{if(ws.readyState===1)ws.send('{"type":"ping"}')},25000)}}
+ws.onclose=async()=>{const lv=document.getElementById("live");if(lv)lv.classList.remove("on");if(CH.ws===ws)CH.ws=null;const r=await call("ping").catch(()=>null);setTimeout(chatConnect,3000)};
+ws.onopen=()=>{const lv=document.getElementById("live");if(lv)lv.classList.add("on");clearInterval(CH.pi);CH.pi=setInterval(()=>{if(ws.readyState===1)ws.send('{"type":"ping"}')},25000)}}
 FN.chat=function(){CH.unread=0;draw();CH.who=el("div",{class:"m"},"");CH.list=el("div",{class:"chat"});CH.stuck=false;
 const inp=el("input",{placeholder:"اكتب رسالة للإدارة...",maxlength:"500"});CH.input=inp;
 const send=()=>{const t=inp.value.trim();if(!t)return;if(!CH.ws||CH.ws.readyState!==1){alert("غير متصل، جاري إعادة الاتصال");chatConnect();return}CH.ws.send(JSON.stringify({type:"msg",text:t}));inp.value=""};
