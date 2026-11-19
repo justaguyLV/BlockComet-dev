@@ -1,5 +1,5 @@
 // Developer-only admin panel for the BlockComet skin service. Lives at /admin on the same worker.
-// Protection: secret password (ADMIN_PASSWORD), login rate limit per IP, signed HttpOnly session cookie,
+// Protection: secret password (ADMIN_PASSWORD, username "developer"), slowed-down wrong tries per IP (no lock-out), signed HttpOnly session cookie,
 // SameSite=Strict + custom header on every API call, strict CSP, optional IP allow-list (ADMIN_ALLOWED_IPS).
 // If ADMIN_PASSWORD is missing or shorter than 12 characters, /admin answers 404 (panel disabled).
 
@@ -50,7 +50,7 @@ function genPassword() {
   return [...a].map((x) => al[x % al.length]).join("");
 }
 async function getStaff(env, name) {
-  if (!STAFF_NAME.test(name) || name === "admin") return null;
+  if (!STAFF_NAME.test(name) || name === "admin" || name === "developer") return null;
   try { const v = await env.SKINS.get("staff:" + name); return v ? JSON.parse(v) : null; } catch (e) { return null; }
 }
 async function setPassword(rec, pw) {
@@ -67,7 +67,7 @@ async function sessionInfo(req, env) {
   if (!safeEq(want, m[4])) return null;
   let who = "";
   try { who = new TextDecoder().decode(bytes(m[3])); } catch (e) { return null; }
-  if (who === "admin:admin") return { role: "admin", name: "admin", perms: ALL, limit: 0 };
+  if (who === "admin:admin") return { role: "admin", name: "developer", perms: ALL, limit: 0 };
   if (who.startsWith("staff:")) {
     const name = who.slice(6), rec = await getStaff(env, name);
     if (rec && !rec.off) return { role: "staff", name, perms: cleanPerms(rec.perms), limit: rec.limit === undefined ? 30 : cleanLimit(rec.limit) };
@@ -78,11 +78,12 @@ async function sessionInfo(req, env) {
 async function login(req, env, ip) {
   const rl = "rl:" + (ip || "none");
   const fails = parseInt((await env.SKINS.get(rl)) || "0", 10);
-  if (fails >= MAX_FAILS) return jsonReply({ error: "locked, try later" }, 429);
+  // no lock-out: the right username + password always gets in, however many wrong tries came before it.
+  // Wrong tries only get slower (up to 5 s each), so guessing stays impractical against the long random passwords.
   let pw = "", user = "";
   try { const b = await req.json(); pw = String(b.password || ""); user = String(b.username || "").trim().toLowerCase(); } catch (e) { /* bad body */ }
-  let role = "admin", name = "admin", ok = false;
-  if (!user || user === "admin") {
+  let role = "admin", name = "developer", ok = false;
+  if (user === "developer") {
     ok = safeEq(await sha("bc-pw:" + pw), await sha("bc-pw:" + env.ADMIN_PASSWORD));
   } else {
     role = "staff"; name = user;
@@ -92,13 +93,13 @@ async function login(req, env, ip) {
   if (!ok) {
     await env.SKINS.put(rl, String(fails + 1), { expirationTtl: LOCK_SECONDS });
     await logEvent(env, { type: "admin_login_failed", ip, by: user || "" });
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, Math.min(5000, 600 + 500 * fails)));
     return jsonReply({ error: "wrong username or password" }, 401);
   }
   await env.SKINS.delete(rl);
   const exp = Date.now() + SESSION_SECONDS * 1000;
   const nonce = crypto.randomUUID().replace(/-/g, "");
-  const who = hex(enc.encode(role + ":" + name));
+  const who = hex(enc.encode(role === "admin" ? "admin:admin" : role + ":" + name));
   const sig = await hmac("bc-session:" + env.ADMIN_PASSWORD, exp + "." + nonce + "." + who);
   await logEvent(env, { type: "admin_login", ip, by: name });
   return jsonReply({ ok: true }, 200, { "set-cookie": `bc_admin=${exp}.${nonce}.${who}.${sig}; Path=/admin; Max-Age=${SESSION_SECONDS}; HttpOnly; Secure; SameSite=Strict` });
@@ -311,7 +312,7 @@ async function api(req, env, ctx, url, ip, sess) {
   }
   if (p === "staff-save" && req.method === "POST") {
     const name = String(body.name || "").trim().toLowerCase();
-    if (!STAFF_NAME.test(name) || name === "admin") return jsonReply({ error: "اسم غير صالح (حروف إنجليزية صغيرة وأرقام و _ أو -، من 2 إلى 20)" }, 400);
+    if (!STAFF_NAME.test(name) || name === "admin" || name === "developer") return jsonReply({ error: "اسم غير صالح (حروف إنجليزية صغيرة وأرقام و _ أو -، من 2 إلى 20)" }, 400);
     let rec = await getStaff(env, name), password = "";
     if (body.create) {
       if (rec) return jsonReply({ error: "الاسم موجود" }, 409);
@@ -365,7 +366,7 @@ ${authed ? "const ME=" + JSON.stringify({ role: sess.role, name: sess.name, perm
 
 function loginJs() {
   return `
-const us=el("input",{placeholder:"اسم المستخدم (للستاف فقط)",autocomplete:"username"});const pw=el("input",{type:"password",placeholder:"كلمة السر",autocomplete:"current-password"});const msg=el("div",{class:"m"});
+const us=el("input",{placeholder:"اسم المستخدم",autocomplete:"username"});const pw=el("input",{type:"password",placeholder:"كلمة السر",autocomplete:"current-password"});const msg=el("div",{class:"m"});
 const go=async()=>{const r=await fetch("/admin/login",{method:"POST",headers:{"x-admin":"1","content-type":"application/json"},body:JSON.stringify({username:us.value,password:pw.value}),credentials:"same-origin"});const d=await r.json().catch(()=>({}));if(d.ok)location.reload();else msg.textContent=d.error||"error"};
 pw.addEventListener("keydown",e=>{if(e.key==="Enter")go()});
 A.append(el("div",{class:"card"},el("div",{class:"row"},us),el("div",{class:"row"},pw,el("button",{onclick:go},"دخول")),msg));`;
