@@ -67,10 +67,10 @@ async function sessionInfo(req, env) {
   if (!safeEq(want, m[4])) return null;
   let who = "";
   try { who = new TextDecoder().decode(bytes(m[3])); } catch (e) { return null; }
-  if (who === "admin:admin") return { role: "admin", name: "developer", perms: ALL, limit: 0 };
+  if (who === "admin:admin") return { role: "admin", name: "developer", perms: ALL, limit: 0, exp: Number(m[1]) };
   if (who.startsWith("staff:")) {
     const name = who.slice(6), rec = await getStaff(env, name);
-    if (rec && !rec.off) return { role: "staff", name, perms: cleanPerms(rec.perms), limit: rec.limit === undefined ? 30 : cleanLimit(rec.limit) };
+    if (rec && !rec.off) return { role: "staff", name, perms: cleanPerms(rec.perms), limit: rec.limit === undefined ? 30 : cleanLimit(rec.limit), exp: Number(m[1]) };
   }
   return null;
 }
@@ -121,6 +121,7 @@ async function api(req, env, ctx, url, ip, sess) {
   };
 
   if (p.startsWith("staff") && !admin) return no();
+  if (p === "ping") return jsonReply({ ok: true });
 
   if (p === "logs") {
     if (!can("logs")) return no();
@@ -339,9 +340,9 @@ async function api(req, env, ctx, url, ip, sess) {
   return jsonReply({ error: "not found" }, 404);
 }
 
-function page(nonce, sess) {
+function page(nonce, sess, host) {
   const authed = !!sess, isStaff = !!sess && sess.role === "staff";
-  const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+  const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self' wss://${host}; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
   const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>BlockComet Admin</title>
 <style nonce="${nonce}">
 :root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--tx:#e8eaf0;--mut:#8b93a5;--ac:#f5c518;--bad:#ff5d5d;--ok:#4cd964}
@@ -352,7 +353,7 @@ button{background:var(--ac);color:#000;border:0;font-weight:600;cursor:pointer}b
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}.row>input{flex:1;min-width:120px}.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{flex:1}
 .tabs button.on{background:var(--ac);color:#000}.tabs button:not(.on){background:#262b36;color:var(--tx)}
 .it{border-bottom:1px solid var(--line);padding:8px 0;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}.it:last-child{border:0}
-.m{color:var(--mut);font-size:12px;direction:ltr;unicode-bidi:plaintext;word-break:break-all}.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:#262b36}.bad{color:var(--bad)}.ok{color:var(--ok)}.v{direction:ltr;unicode-bidi:plaintext;word-break:break-all;text-align:left}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}.grid .card{margin:0}.big{font-size:24px;font-weight:700;color:var(--ac)}.sk{image-rendering:pixelated;width:192px;height:192px;background:#0b0d11;border:1px solid var(--line);border-radius:8px}
+.m{color:var(--mut);font-size:12px;direction:ltr;unicode-bidi:plaintext;word-break:break-all}.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:#262b36}.bad{color:var(--bad)}.ok{color:var(--ok)}.v{direction:ltr;unicode-bidi:plaintext;word-break:break-all;text-align:left}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}.grid .card{margin:0}.big{font-size:24px;font-weight:700;color:var(--ac)}.chat{height:55vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--card);margin-bottom:8px}.msg{margin-bottom:8px;max-width:85%;padding:6px 10px;border-radius:10px;background:#262b36}.msg.me{background:#3a3320;margin-inline-start:auto}.tx{white-space:pre-wrap;word-break:break-word}.sk{image-rendering:pixelated;width:192px;height:192px;background:#0b0d11;border:1px solid var(--line);border-radius:8px}
 </style></head><body><h1>BlockComet — ${isStaff ? "لوحة الستاف" : "لوحة المطورين"}</h1><div id="app"></div>
 <script nonce="${nonce}">
 const A=document.getElementById("app");
@@ -380,10 +381,10 @@ const TY={ban_name:"حظر لاعب",ban_ip:"حظر IP",unban_name:"فك حظر 
 const ago=t=>{if(!t)return "—";const s=Math.floor((Date.now()-t)/1000);if(s<60)return "قبل لحظات";if(s<3600)return "قبل "+Math.floor(s/60)+" دقيقة";if(s<86400)return "قبل "+Math.floor(s/3600)+" ساعة";return "قبل "+Math.floor(s/86400)+" يوم"};
 const devOf=o=>[o.dv,o.os].filter(Boolean).join(" · ")||"غير معروف";
 const locOf=o=>[o.cy,o.c].filter(Boolean).join(", ")||"—";
-const TABS=[["stats","الإحصاءات",can("stats")],["logs","السجل",can("logs")],["players","اللاعبون",true],["clients","الأجهزة",can("ips")],["bans","المحظورون",true],["staff","الستاف",ME.role==="admin"]].filter(t=>t[2]);
+const TABS=[["stats","الإحصاءات",can("stats")],["logs","السجل",can("logs")],["players","اللاعبون",true],["clients","الأجهزة",can("ips")],["bans","المحظورون",true],["chat","الشات",true],["staff","الستاف",ME.role==="admin"]].filter(t=>t[2]);
 const tabs=el("div",{class:"tabs"});const box=el("div");A.append(tabs,box);let cur=TABS[0][0];
 const out=async()=>{await fetch("/admin/logout",{method:"POST",headers:{"x-admin":"1"},credentials:"same-origin"});location.reload()};
-const draw=()=>{tabs.replaceChildren(...TABS.map(([k,n])=>el("button",{class:cur===k?"on":"",onclick:()=>{cur=k;draw();show()}},n)),el("button",{class:"s",onclick:out},"خروج"))};
+const draw=()=>{tabs.replaceChildren(...TABS.map(([k,n])=>el("button",{class:cur===k?"on":"",onclick:()=>{cur=k;if(k==="chat")CH.unread=0;draw();show()}},n+(k==="chat"&&CH.unread?" ("+CH.unread+")":""))),el("button",{class:"s",onclick:out},"خروج"))};
 const FN={};
 async function show(){box.replaceChildren(el("div",{class:"m"},"..."));FN[cur]()}
 const kv=(k,v)=>el("div",{class:"it"},el("span",{class:"m"},k),el("span",{class:"v"},v||"—"));
@@ -434,6 +435,27 @@ const nm=el("input",{placeholder:"اسم الستاف (إنجليزي صغير)"
 parts.push(el("div",{class:"card"},el("div",{},"ستاف جديد"),el("div",{class:"row"},nm),pb.w,el("label",{class:"it"},el("span",{},"حد الحظر بالساعة (0 = بلا حد)"),lim),el("button",{onclick:async()=>{const x=await call("staff-save",{create:true,name:nm.value,perms:pb.get(),limit:Number(lim.value)});if(x.error)alert(x.error);else FN.staff(pwCard(nm.value.trim().toLowerCase(),x.password))}},"إنشاء")));
 parts.push(el("div",{class:"card"},...((d.staff||[]).length?d.staff.map(s=>el("div",{class:"it"},el("div",{},el("span",{class:"v"},s.name),s.off?el("span",{class:"tag bad"},"موقوف"):"",el("div",{class:"m"},"صلاحيات: "+(Object.keys(PL).filter(k=>s.perms[k]).map(k=>PL[k]).join("، ")||"أسماء فقط")+"  ·  حد: "+(s.limit||"بلا")+"  ·  أنشأه: "+(s.by||"—"))),el("div",{class:"row"},el("button",{class:"s",onclick:()=>editStaff(s)},"تعديل"),el("button",{class:"s",onclick:async()=>{if(!confirm("كلمة سر جديدة لـ "+s.name+"؟ القديمة تتعطل."))return;const x=await call("staff-save",{name:s.name,reset:true});if(x.error)alert(x.error);else FN.staff(pwCard(s.name,x.password))}},"كلمة سر جديدة"),el("button",{class:"d",onclick:async()=>{if(confirm("حذف "+s.name+"؟")){await call("staff-delete",{name:s.name});FN.staff()}}},"حذف")))):[el("div",{class:"m"},"ما في ستاف بعد")])));
 box.replaceChildren(...parts)};
+const CH={ws:null,msgs:[],online:[],unread:0,list:null,who:null,input:null};
+const hhmm=t=>new Date(t).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});
+function chatRender(){if(cur!=="chat"||!CH.list)return;const atEnd=CH.list.scrollHeight-CH.list.scrollTop-CH.list.clientHeight<60;
+CH.who.textContent="متصلون الآن: "+(CH.online.join("، ")||"—");
+CH.list.replaceChildren(...CH.msgs.map(m=>el("div",{class:"msg"+(m.by===ME.name?" me":"")},el("div",{class:"m"},m.by+(m.role==="admin"?" (مطوّر)":"")+"  ·  "+hhmm(m.t)+(ME.role==="admin"?"  ":""),ME.role==="admin"?el("button",{class:"s",onclick:()=>{if(CH.ws&&CH.ws.readyState===1)CH.ws.send(JSON.stringify({type:"del",id:m.id}))}},"حذف"):""),el("div",{class:"tx"},m.text))));
+if(atEnd||!CH.stuck)CH.list.scrollTop=CH.list.scrollHeight;CH.stuck=true}
+function chatConnect(){if(CH.ws&&CH.ws.readyState<2)return;const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/admin/chat");CH.ws=ws;
+ws.onmessage=e=>{let d;try{d=JSON.parse(e.data)}catch(x){return}
+if(d.type==="history"){CH.msgs=d.messages||[];CH.online=d.online||[]}
+else if(d.type==="msg"){CH.msgs.push(d.msg);if(CH.msgs.length>300)CH.msgs.shift();if(cur!=="chat"&&d.msg.by!==ME.name){CH.unread++;draw()}}
+else if(d.type==="del"){CH.msgs=CH.msgs.filter(m=>m.id!==d.id)}
+else if(d.type==="presence"){CH.online=d.online||[]}
+chatRender()};
+ws.onclose=async()=>{if(CH.ws===ws)CH.ws=null;const r=await call("ping").catch(()=>null);setTimeout(chatConnect,3000)};
+ws.onopen=()=>{clearInterval(CH.pi);CH.pi=setInterval(()=>{if(ws.readyState===1)ws.send('{"type":"ping"}')},25000)}}
+FN.chat=function(){CH.unread=0;draw();CH.who=el("div",{class:"m"},"");CH.list=el("div",{class:"chat"});CH.stuck=false;
+const inp=el("input",{placeholder:"اكتب رسالة للإدارة...",maxlength:"500"});CH.input=inp;
+const send=()=>{const t=inp.value.trim();if(!t)return;if(!CH.ws||CH.ws.readyState!==1){alert("غير متصل، جاري إعادة الاتصال");chatConnect();return}CH.ws.send(JSON.stringify({type:"msg",text:t}));inp.value=""};
+inp.addEventListener("keydown",e=>{if(e.key==="Enter")send()});
+box.replaceChildren(CH.who,CH.list,el("div",{class:"row"},inp,el("button",{onclick:send},"إرسال")));chatRender();chatConnect()};
+chatConnect();
 draw();show();`;
 }
 
@@ -449,8 +471,16 @@ export async function admin(req, env, ctx, ip) {
     return login(req, env, ip);
   }
   const sess = await sessionInfo(req, env);
-  if (path === "/admin" && req.method === "GET") return page(crypto.randomUUID().replace(/-/g, ""), sess);
+  if (path === "/admin" && req.method === "GET") return page(crypto.randomUUID().replace(/-/g, ""), sess, url.host);
   if (!sess) return jsonReply({ error: "unauthorized" }, 401);
+  if (path === "/admin/chat") { // WebSocket: browsers cannot add the x-admin header, so the cookie (SameSite=Strict) plus an Origin check guard it
+    if (req.headers.get("upgrade") !== "websocket") return reply("expected websocket", 426);
+    if (req.headers.get("origin") !== url.origin) return reply("forbidden", 403);
+    if (!env.CHAT) return reply("chat not available", 503);
+    const h = new Headers(req.headers);
+    h.set("x-chat-name", sess.name); h.set("x-chat-role", sess.role); h.set("x-chat-exp", String(sess.exp || 0));
+    return env.CHAT.get(env.CHAT.idFromName("staff")).fetch(new Request(req, { headers: h }));
+  }
   if (req.headers.get("x-admin") !== "1") return reply("forbidden", 403);
   if (path === "/admin/logout" && req.method === "POST") return jsonReply({ ok: true }, 200, { "set-cookie": "bc_admin=; Path=/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict" });
   if (path.startsWith("/admin/api/")) return api(req, env, ctx, url, ip, sess);

@@ -1,3 +1,4 @@
+export { ChatRoom } from "./chat.js";
 // BlockComet skin registry: one PNG per player name, kept in Cloudflare KV (free plan is enough).
 //   GET /skins/<name>.png   the skin (what CustomSkinLoader asks for), 404 when the player has none
 //   PUT /skins/<name>.png   publish or replace: body = PNG, header X-Skin-Token = secret the launcher made for that name
