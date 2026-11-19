@@ -18,16 +18,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Create R2 bucket and D1 database if missing
+      - name: r2-bucket
+        run: npx -y wrangler@4 r2 bucket create game-store-files > out.txt 2>&1 || grep -qi "already exists" out.txt
+      - name: d1-create
+        run: npx -y wrangler@4 d1 create game-store > out.txt 2>&1 || grep -qi "already exists" out.txt
+      - name: d1-info
+        run: npx -y wrangler@4 d1 info game-store --json > info.json
+      - name: d1-id
         run: |
-          W="npx -y wrangler@4"
-          fail() { echo "::error title=$1::$(tr '\n' ' ' < out.txt | cut -c1-900)"; exit 1; }
-          $W r2 bucket create game-store-files > out.txt 2>&1 || grep -qi "already exists" out.txt || fail r2-create
-          $W d1 create game-store > out.txt 2>&1 || grep -qi "already exists" out.txt || fail d1-create
-          $W d1 info game-store --json > out.txt 2>&1 || fail d1-info
-          ID=$(jq -r '.uuid // .id // .database_id' out.txt) || fail d1-parse
-          if [ -z "$ID" ] || [ "$ID" = "null" ]; then fail d1-id; fi
+          ID=$(jq -r '.uuid // .id // .database_id' info.json)
+          [ -n "$ID" ] && [ "$ID" != "null" ]
           sed -i "s/REPLACE_DB_ID/$ID/" wrangler.toml
-          $W d1 execute game-store --remote --file=schema.sql > out.txt 2>&1 || fail d1-execute
-      - name: Deploy
+      - name: d1-schema
+        run: npx -y wrangler@4 d1 execute game-store --remote --file=schema.sql
+      - name: deploy
         run: npx -y wrangler@4 deploy
