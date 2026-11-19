@@ -1,0 +1,30 @@
+name: Game Store Deploy
+on:
+  push:
+    branches: [game-store]
+    paths: ['gamestore/**', '.github/workflows/gamestore-deploy.yml']
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gamestore
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Create R2 bucket and D1 database if missing
+        run: |
+          npx -y wrangler@4 r2 bucket create game-store-files || true
+          npx -y wrangler@4 d1 create game-store || true
+          ID=$(npx -y wrangler@4 d1 info game-store --json | jq -r '.uuid // .id')
+          test -n "$ID" && [ "$ID" != "null" ]
+          sed -i "s/REPLACE_DB_ID/$ID/" wrangler.toml
+          npx -y wrangler@4 d1 execute game-store --remote --file=schema.sql
+      - name: Deploy
+        run: npx -y wrangler@4 deploy
