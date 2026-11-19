@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>لوحة المطورين</title>
+<style>
+body{margin:0;background:#07060f;color:#efeeff;font:16px/1.7 system-ui,sans-serif}
+main{max-width:720px;margin:auto;padding:24px 16px}
+h1{margin:0 0 16px}
+input,button{font:inherit;border-radius:10px;border:1px solid #3a3870;background:#14123a;color:inherit;padding:10px 14px}
+button{cursor:pointer;background:#3d5afe;border:0}
+button.del{background:#c62d4a}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #26244f}
+small{color:#a9a8d6}#m{color:#ffc93c;min-height:1.5em}
+</style></head><body><main>
+<h1>لوحة المطورين</h1>
+<form id="lf"><input id="pw" type="password" placeholder="كلمة السر" aria-label="كلمة السر" required> <button>دخول</button></form>
+<p id="m" role="status"></p><div id="list"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let pw=sessionStorage.getItem("pw")||"";
+async function login(){
+  const r=await fetch("/api/admin/check",{headers:{"x-admin":pw}});
+  if(!r.ok){$("#m").textContent="كلمة السر غلط";sessionStorage.removeItem("pw");return}
+  sessionStorage.setItem("pw",pw);$("#lf").hidden=true;$("#m").textContent="";load();
+}
+async function load(){
+  const g=await (await fetch("/api/games")).json();
+  $("#list").innerHTML=g.length?g.map(x=>`<div class="row"><span>${esc(x.title)}<br><small>${esc(x.developer)} · ${x.downloads} تحميل</small></span><button class="del" data-id="${x.id}">احذف</button></div>`).join(""):"<p>ما فيه ألعاب.</p>";
+}
+$("#lf").onsubmit=e=>{e.preventDefault();pw=$("#pw").value;login()};
+$("#list").onclick=async e=>{
+  const id=e.target.dataset.id;if(!id||!confirm("تحذف هذي اللعبة؟"))return;
+  const r=await fetch("/api/games/"+id,{method:"DELETE",headers:{"x-admin":pw}});
+  $("#m").textContent=r.ok?"تم الحذف":"فشل الحذف";load();
+};
+if(pw)login();
+</script></main></body></html>
