@@ -34,3 +34,8 @@ jobs:
         env:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: printf '%s' "$ADMIN_PASSWORD" | npx -y wrangler@4 secret put ADMIN_PASSWORD
+      - name: github-storage-secret
+        env:
+          GH_TOKEN_VALUE: ${{ secrets.GAMESTORE_GH_TOKEN }}
+        run: |
+          if [ -n "$GH_TOKEN_VALUE" ]; then printf '%s' "$GH_TOKEN_VALUE" | npx -y wrangler@4 secret put GH_TOKEN; else echo "GAMESTORE_GH_TOKEN not set"; fi
