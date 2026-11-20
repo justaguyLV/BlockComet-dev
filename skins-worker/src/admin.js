@@ -397,7 +397,7 @@ label.it{cursor:pointer}
 .msg.me{background:linear-gradient(135deg,rgba(94,231,255,.16),rgba(139,92,246,.3));border-color:rgba(139,92,246,.45);align-self:flex-start;border-radius:14px 14px 4px 14px}
 .msg .m{margin-bottom:2px}.msg button{min-height:28px;padding:2px 10px;font-size:12px;margin-inline-start:8px}
 .tx{white-space:pre-wrap;word-break:break-word}
-.perms{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.perms .it{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);font-size:13.5px;flex-wrap:nowrap}.perms .it:last-child{border:1px solid var(--line)}.perms .it:has(input:checked){border-color:rgba(139,92,246,.65);background:rgba(139,92,246,.16)}.card>button{margin-top:8px}
+.perms{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.perms .it{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);font-size:13.5px;flex-wrap:nowrap}.perms .it:last-child{border:1px solid var(--line)}.perms .it:has(input:checked){border-color:rgba(139,92,246,.65);background:rgba(139,92,246,.16)}.card>button{margin-top:8px}.card>.m{margin:6px 0 8px;line-height:1.7}.card>.row{margin-top:12px}
 .sk{display:block;margin:0 auto;image-rendering:pixelated;width:192px;height:192px;border:1px solid var(--line);border-radius:14px;background:conic-gradient(#1c1842 25%,#120f30 0 50%,#1c1842 0 75%,#120f30 0) 0 0/16px 16px;box-shadow:0 0 30px -8px rgba(139,92,246,.6)}
 .out .top{max-width:420px;flex-direction:column;text-align:center;padding:30px 16px 24px;margin-top:9vh}
 .out .logo{width:76px;height:76px}.out .ttl h1{font-size:26px}
@@ -485,26 +485,47 @@ const nm=el("input",{placeholder:"اسم الستاف (إنجليزي صغير)"
 parts.push(el("div",{class:"card"},el("div",{},"ستاف جديد"),el("div",{class:"row"},nm),pb.w,el("label",{class:"it"},el("span",{},"حد الحظر بالساعة (0 = بلا حد)"),lim),el("button",{onclick:async()=>{const x=await call("staff-save",{create:true,name:nm.value,perms:pb.get(),limit:Number(lim.value)});if(x.error)alert(x.error);else FN.staff(pwCard(nm.value.trim().toLowerCase(),x.password))}},"إنشاء")));
 parts.push(el("div",{class:"card"},...((d.staff||[]).length?d.staff.map(s=>el("div",{class:"it"},el("div",{},el("span",{class:"v"},s.name),s.off?el("span",{class:"tag bad"},"موقوف"):"",el("div",{class:"m"},"صلاحيات: "+(Object.keys(PL).filter(k=>s.perms[k]).map(k=>PL[k]).join("، ")||"أسماء فقط")+"  ·  حد: "+(s.limit||"بلا")+"  ·  أنشأه: "+(s.by||"—"))),el("div",{class:"row"},el("button",{class:"s",onclick:()=>editStaff(s)},"تعديل"),el("button",{class:"s",onclick:async()=>{if(!confirm("كلمة سر جديدة لـ "+s.name+"؟ القديمة تتعطل."))return;const x=await call("staff-save",{name:s.name,reset:true});if(x.error)alert(x.error);else FN.staff(pwCard(s.name,x.password))}},"كلمة سر جديدة"),el("button",{class:"d",onclick:async()=>{if(confirm("حذف "+s.name+"؟")){await call("staff-delete",{name:s.name});FN.staff()}}},"حذف")))):[el("div",{class:"m"},"ما في ستاف بعد")])));
 box.replaceChildren(...parts)};
-const CH={ws:null,msgs:[],online:[],unread:0,list:null,who:null,input:null};
+const CH={ws:null,msgs:[],online:[],unread:0,list:null,who:null,input:null,key:null,fp:"",stuck:false};
 const hhmm=t=>new Date(t).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});
-function chatRender(){if(cur!=="chat"||!CH.list)return;const atEnd=CH.list.scrollHeight-CH.list.scrollTop-CH.list.clientHeight<60;
+const TE=new TextEncoder(),TD=new TextDecoder();
+const b64=u=>{let s="";for(const c of u)s+=String.fromCharCode(c);return btoa(s)};
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function deriveKey(pw){const base=await crypto.subtle.importKey("raw",TE.encode(pw),"PBKDF2",false,["deriveKey"]);return crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt:TE.encode("blockcomet-staff-chat-v1"),iterations:310000},base,{name:"AES-GCM",length:256},true,["encrypt","decrypt"])}
+async function fpOf(key){const raw=new Uint8Array(await crypto.subtle.exportKey("raw",key));const h=new Uint8Array(await crypto.subtle.digest("SHA-256",new Uint8Array([...TE.encode("fp:"),...raw])));return [...h.slice(0,4)].map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase().replace(/(....)(....)/,"$1-$2")}
+async function encMsg(text){const iv=crypto.getRandomValues(new Uint8Array(12));const c=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:TE.encode(ME.name)},CH.key,TE.encode(JSON.stringify({t:text})));return{iv:b64(iv),c:b64(new Uint8Array(c))}}
+async function decMsg(m){try{const p=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(m.iv),additionalData:TE.encode(m.by)},CH.key,unb64(m.c));return String(JSON.parse(TD.decode(p)).t)}catch(e){return null}}
+async function prep(m){if(m._p===undefined&&CH.key)m._p=await decMsg(m)}
+async function unlock(pw){const k=await deriveKey(pw);CH.key=k;CH.fp=await fpOf(k);try{sessionStorage.setItem("bc_chat_pw",pw)}catch(e){}for(const m of CH.msgs){m._p=undefined;await prep(m)}}
+function lockChat(){CH.key=null;CH.fp="";try{sessionStorage.removeItem("bc_chat_pw")}catch(e){}for(const m of CH.msgs)m._p=undefined}
+function chatRender(){if(cur!=="chat"||!CH.list||!CH.key)return;const atEnd=CH.list.scrollHeight-CH.list.scrollTop-CH.list.clientHeight<60;
 CH.who.textContent="متصلون الآن: "+(CH.online.join("، ")||"—");
-CH.list.replaceChildren(...CH.msgs.map(m=>el("div",{class:"msg"+(m.by===ME.name?" me":"")},el("div",{class:"m"},m.by+(m.role==="admin"?" (مطوّر)":"")+"  ·  "+hhmm(m.t)+(ME.role==="admin"?"  ":""),ME.role==="admin"?el("button",{class:"s",onclick:()=>{if(CH.ws&&CH.ws.readyState===1)CH.ws.send(JSON.stringify({type:"del",id:m.id}))}},"حذف"):""),el("div",{class:"tx"},m.text))));
+CH.list.replaceChildren(...CH.msgs.map(m=>el("div",{class:"msg"+(m.by===ME.name?" me":"")},el("div",{class:"m"},m.by+(m.role==="admin"?" (مطوّر)":"")+"  ·  "+hhmm(m.t),ME.role==="admin"?el("button",{class:"s",onclick:()=>{if(CH.ws&&CH.ws.readyState===1)CH.ws.send(JSON.stringify({type:"del",id:m.id}))}},"حذف"):""),el("div",{class:"tx"},typeof m._p==="string"?m._p:"🔒 رسالة مشفرة لا أقدر أفكها بهذا المفتاح"))));
 if(atEnd||!CH.stuck)CH.list.scrollTop=CH.list.scrollHeight;CH.stuck=true}
 function chatConnect(){if(CH.ws&&CH.ws.readyState<2)return;const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/admin/chat");CH.ws=ws;
-ws.onmessage=e=>{let d;try{d=JSON.parse(e.data)}catch(x){return}
-if(d.type==="history"){CH.msgs=d.messages||[];CH.online=d.online||[]}
-else if(d.type==="msg"){CH.msgs.push(d.msg);if(CH.msgs.length>300)CH.msgs.shift();if(cur!=="chat"&&d.msg.by!==ME.name){CH.unread++;draw()}}
+ws.onmessage=async e=>{let d;try{d=JSON.parse(e.data)}catch(x){return}
+if(d.type==="history"){CH.msgs=d.messages||[];CH.online=d.online||[];for(const m of CH.msgs)await prep(m)}
+else if(d.type==="msg"){await prep(d.msg);CH.msgs.push(d.msg);if(CH.msgs.length>300)CH.msgs.shift();if(cur!=="chat"&&d.msg.by!==ME.name){CH.unread++;draw()}}
 else if(d.type==="del"){CH.msgs=CH.msgs.filter(m=>m.id!==d.id)}
 else if(d.type==="presence"){CH.online=d.online||[]}
 chatRender()};
 ws.onclose=async()=>{const lv=document.getElementById("live");if(lv)lv.classList.remove("on");if(CH.ws===ws)CH.ws=null;const r=await call("ping").catch(()=>null);setTimeout(chatConnect,3000)};
 ws.onopen=()=>{const lv=document.getElementById("live");if(lv)lv.classList.add("on");clearInterval(CH.pi);CH.pi=setInterval(()=>{if(ws.readyState===1)ws.send('{"type":"ping"}')},25000)}}
-FN.chat=function(){CH.unread=0;draw();CH.who=el("div",{class:"m"},"");CH.list=el("div",{class:"chat"});CH.stuck=false;
-const inp=el("input",{placeholder:"اكتب رسالة للإدارة...",maxlength:"500"});CH.input=inp;
-const send=()=>{const t=inp.value.trim();if(!t)return;if(!CH.ws||CH.ws.readyState!==1){alert("غير متصل، جاري إعادة الاتصال");chatConnect();return}CH.ws.send(JSON.stringify({type:"msg",text:t}));inp.value=""};
+function lockView(){CH.list=null;const pw=el("input",{type:"password",placeholder:"كلمة سر الغرفة المشفّرة",autocomplete:"off"});const msg=el("div",{class:"m"},"");
+const go=async()=>{if(pw.value.length<8){msg.textContent="كلمة السر لازم تكون 8 أحرف أو أكثر";return}msg.textContent="جاري فتح القفل...";try{await unlock(pw.value)}catch(e){msg.textContent="تعذر فتح القفل";return}FN.chat()};
+const gen=()=>{const a=crypto.getRandomValues(new Uint8Array(20));const al="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(const x of a)s+=al[x%al.length];pw.type="text";pw.value=s.match(/.{4}/g).join("-")};
+pw.addEventListener("keydown",e=>{if(e.key==="Enter")go()});
+box.replaceChildren(el("div",{class:"card"},el("div",{class:"big"},"🔒 شات مشفّر"),
+el("div",{class:"m"},"الرسائل تُشفَّر في جهازك قبل الإرسال، والسيرفر ما يشوف إلا نصًا مشفرًا لا يقرأه أحد."),
+el("div",{class:"m"},"كلمة السر ما تُرسل لأي مكان، وكل الإدارة لازم تستخدم نفس الكلمة. إذا ضاعت ما نقدر نرجّع الرسائل."),
+el("div",{class:"m"},"شاركها مع الإدارة بوسيلة آمنة (مو في نفس الشات)."),
+el("div",{class:"row"},pw),el("div",{class:"row"},el("button",{onclick:go},"فتح"),ME.role==="admin"?el("button",{class:"s",onclick:gen},"توليد كلمة سر قوية"):""),msg))}
+FN.chat=function(){CH.unread=0;draw();if(!CH.key){lockView();return}CH.who=el("div",{class:"m"},"");CH.list=el("div",{class:"chat"});CH.stuck=false;
+const top=el("div",{class:"row"},el("span",{class:"tag"},"🔒 مشفّر من طرف لطرف  ·  بصمة المفتاح: "+CH.fp),el("button",{class:"s",onclick:()=>{lockChat();FN.chat()}},"قفل / تغيير المفتاح"));
+const inp=el("input",{placeholder:"اكتب رسالة مشفّرة...",maxlength:"500"});CH.input=inp;
+const send=async()=>{const t=inp.value.trim();if(!t)return;if(!CH.ws||CH.ws.readyState!==1){alert("غير متصل، جاري إعادة الاتصال");chatConnect();return}const e=await encMsg(t);CH.ws.send(JSON.stringify({type:"msg",iv:e.iv,c:e.c}));inp.value=""};
 inp.addEventListener("keydown",e=>{if(e.key==="Enter")send()});
-box.replaceChildren(CH.who,CH.list,el("div",{class:"row"},inp,el("button",{onclick:send},"إرسال")));chatRender();chatConnect()};
+box.replaceChildren(top,CH.who,CH.list,el("div",{class:"row"},inp,el("button",{onclick:send},"إرسال")));chatRender();chatConnect()};
+try{const sp=sessionStorage.getItem("bc_chat_pw");if(sp)unlock(sp).then(()=>{if(cur==="chat")FN.chat()}).catch(()=>{})}catch(e){}
 chatConnect();
 draw();show();`;
 }

@@ -1,6 +1,8 @@
+// END-TO-END ENCRYPTED: the browsers encrypt every message (AES-256-GCM, key derived from a room passphrase that never leaves them).
+// This room only ever sees, stores and forwards ciphertext (iv + c), so the server cannot read the conversation.
 // Staff chat room: one Durable Object (SQLite-backed, free plan) that all logged-in developer/staff panels connect to over a WebSocket.
 // The Worker authenticates the panel session first and passes the name/role/expiry in x-chat-* headers, which only the Worker can set.
-const MAX_LEN = 500;
+const MAX_CT = 3000; // base64 length of one encrypted message (about 2 KB)
 const KEEP = 500;
 
 export class ChatRoom {
@@ -8,6 +10,13 @@ export class ChatRoom {
     this.state = state;
     this.env = env;
     try { state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}')); } catch (e) { /* not available in tests */ }
+    // one-time upgrade: drop every message stored before encryption existed (they were readable plaintext)
+    state.blockConcurrencyWhile(async () => {
+      if (await state.storage.get("e2e")) return;
+      const keys = [...(await state.storage.list({ prefix: "m:" })).keys()];
+      for (let i = 0; i < keys.length; i += 100) await state.storage.delete(keys.slice(i, i + 100));
+      await state.storage.put("e2e", 1);
+    });
   }
 
   online() {
@@ -64,13 +73,14 @@ export class ChatRoom {
       return;
     }
     if (m.type !== "msg") return;
-    const text = String(m.text || "").trim().slice(0, MAX_LEN);
-    if (!text) return;
+    const iv = String(m.iv || ""), ct = String(m.c || "");
+    // only well-formed ciphertext is accepted; a plain "text" message is refused outright
+    if (!/^[A-Za-z0-9+/]{16}$/.test(iv) || !/^[A-Za-z0-9+/]+={0,2}$/.test(ct) || ct.length < 24 || ct.length > MAX_CT) return;
     const now = Date.now();
     if (me.last && now - me.last < 700) return; // flood guard
     me.last = now;
     ws.serializeAttachment(me);
-    const msg = { id: crypto.randomUUID().slice(0, 8), t: now, by: me.name, role: me.role, text };
+    const msg = { id: crypto.randomUUID().slice(0, 8), t: now, by: me.name, role: me.role, iv, c: ct };
     await this.state.storage.put("m:" + String(now).padStart(13, "0") + ":" + msg.id, msg);
     this.broadcast({ type: "msg", msg });
     const n = ((await this.state.storage.get("n")) || 0) + 1;
