@@ -103,7 +103,7 @@ export async function reportAdmin(p, env, url, ip, sess, can, body, actor, no) {
     if (!v) return json({ error: "غير موجود (أو انتهت مدته)" }, 404);
     const r = JSON.parse(v);
     const out = { id: r.id, cat: r.cat, text: r.text, contact: r.contact || "", t: r.t, st: r.st, img: !!r.img };
-    if (can("ips")) out.ip = r.ip || "";
+    // the sender's IP is never shown here, to anyone; it is kept only so "حظر المرسل" can block it server-side
     return json({ report: out });
   }
   if (p === "report-img") {
@@ -141,7 +141,7 @@ export async function reportAdmin(p, env, url, ip, sess, can, body, actor, no) {
     if (!r.ip) return json({ error: "ما في IP محفوظ" }, 404);
     if (r.ip === ip) return json({ error: "هذا الـ IP حقك أنت" }, 400);
     await env.SKINS.put("ban:ip:" + r.ip, JSON.stringify({ reason: "report " + id.slice(-6), t: Date.now() }));
-    await logEvent(env, { type: "ban_ip", ip, target: can("ips") ? r.ip : "(مخفي)", reason: "report " + id.slice(-6), by: actor });
+    await logEvent(env, { type: "ban_ip", ip, target: "(مخفي)", reason: "report " + id.slice(-6), by: actor });
     return json({ ok: true });
   }
   return null;

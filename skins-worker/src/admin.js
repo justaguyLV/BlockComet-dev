@@ -431,7 +431,6 @@ const acts2=el("div",{class:"row"});
 if(can("banip"))acts2.append(el("button",{class:"d",onclick:async()=>{if(!confirm("حظر صاحب هذا البلاغ (الـ IP)؟"))return;const x=await call("report-ban",{id});alert(x.error||"تم الحظر")}},"حظر المرسل"));
 if(can("delete"))acts2.append(el("button",{class:"d",onclick:async()=>{if(!confirm("حذف البلاغ؟"))return;await call("report-delete",{id});FN.reports()}},"حذف البلاغ"));
 const info=el("div",{class:"card"},kv("القسم",RC[r.cat]||r.cat),kv("الحالة",RS[r.st]||r.st),kv("الوقت",when(r.t)+" ("+ago(r.t)+")"),kv("للتواصل",r.contact));
-if(r.ip!==undefined)info.append(kv("الـ IP",r.ip));
 const parts=[acts,info,el("div",{class:"card"},el("div",{class:"tx"},r.text))];
 if(r.img){const im=el("img",{class:"rimg",alt:""});im.setAttribute("src","/admin/api/report-img?id="+encodeURIComponent(id));im.onclick=()=>window.open("/admin/api/report-img?id="+encodeURIComponent(id),"_blank");parts.push(el("div",{class:"card"},im))}
 if(acts2.childNodes.length)parts.push(acts2);box.replaceChildren(...parts)}
