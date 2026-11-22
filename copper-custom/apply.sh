@@ -614,10 +614,6 @@ grep -q 'android:supportsRtl="true"' "$MANIFEST"
 python3 "$HERE/rtlfix.py" "$RES"
 
 
-# 20. Default touch controls: our own layout (joystick on the left, jump/attack/place on the right, thin top bar) instead of Copper's
-python3 "$HERE/controls.py" "$P/app_mojo/src/main/assets/default.json"
-grep -q '"mJoystickDataList"' "$P/app_mojo/src/main/assets/default.json"
-
 # 21. Video recording in game (HBRecorder, in-game menu entry, settings, "My videos")
 python3 "$HERE/record.py" "$RES" "$JAVA" "$HERE" "$P"
 
