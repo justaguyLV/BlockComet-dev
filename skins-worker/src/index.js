@@ -1,4 +1,5 @@
 export { ChatRoom } from "./chat.js";
+import { reportPublic } from "./reports.js";
 // BlockComet skin registry: one PNG per player name, kept in Cloudflare KV (free plan is enough).
 //   GET /skins/<name>.png   the skin (what CustomSkinLoader asks for), 404 when the player has none
 //   PUT /skins/<name>.png   publish or replace: body = PNG, header X-Skin-Token = secret the launcher made for that name
@@ -106,6 +107,7 @@ export default {
       if (!(await env.SKINS.get("seen:" + ip))) { await env.SKINS.put("seen:" + ip, "1", { expirationTtl: 60 }); ctx.waitUntil(logEvent(env, { type: "blocked", ip, target: "ip", reason: url.pathname.slice(0, 60) })); }
       return text("banned", 403);
     }
+    if (url.pathname === "/report" || url.pathname.startsWith("/report/")) { const rr = await reportPublic(req, env, url, ip); if (rr) return rr; return text("not found", 404); }
     if (ip && req.method !== "PUT" && url.pathname !== "/") ctx.waitUntil(touchClient(env, ip, clientInfo(req), ""));
     if (url.pathname === "/") return text("BlockComet skin registry");
     // for the launcher to ask later whether a player is banned: GET /status/<name> -> {"banned":true|false}

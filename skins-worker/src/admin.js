@@ -1,3 +1,5 @@
+import { BASE_CSS } from "./style.js";
+import { reportAdmin } from "./reports.js";
 // Developer-only admin panel for the BlockComet skin service. Lives at /admin on the same worker.
 // Protection: secret password (ADMIN_PASSWORD, username "developer"), slowed-down wrong tries per IP (no lock-out), signed HttpOnly session cookie,
 // SameSite=Strict + custom header on every API call, strict CSP, optional IP allow-list (ADMIN_ALLOWED_IPS).
@@ -122,6 +124,7 @@ async function api(req, env, ctx, url, ip, sess) {
 
   if (p.startsWith("staff") && !admin) return no();
   if (p === "ping") return jsonReply({ ok: true });
+  if (p.startsWith("report")) { const rr = await reportAdmin(p, env, url, ip, sess, can, body, actor, no); if (rr) return rr; }
 
   if (p === "logs") {
     if (!can("logs")) return no();
@@ -345,66 +348,7 @@ function page(nonce, sess, host) {
   const csp = `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self' wss://${host}; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
   const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>BlockComet Admin</title>
 <style nonce="${nonce}">
-:root{--void:#07060f;--ink:#ecebff;--mut:#9a98c0;--glass:rgba(22,18,48,.62);--line:rgba(160,150,255,.17);--vio:#8b5cf6;--cy:#5ee7ff;--pink:#ff4fa3;--ok:#3dffb2;--bad:#ff5a7a;--r:18px;color-scheme:dark}
-*{box-sizing:border-box;scrollbar-color:#3a3470 transparent}
-html{background:var(--void)}
-body{margin:0;min-height:100vh;color:var(--ink);font:15px/1.55 "SF Arabic","Segoe UI","Noto Sans Arabic",Tahoma,system-ui,sans-serif;padding:max(12px,env(safe-area-inset-top)) 14px 32px;position:relative;overflow-x:hidden}
-body::before{content:"";position:fixed;inset:-20%;z-index:-2;background:radial-gradient(40% 35% at 15% 10%,rgba(139,92,246,.5),transparent 70%),radial-gradient(35% 30% at 90% 22%,rgba(94,231,255,.26),transparent 70%),radial-gradient(45% 40% at 70% 95%,rgba(255,79,163,.22),transparent 70%),linear-gradient(180deg,#0c0922,#07060f 62%);animation:drift 40s ease-in-out infinite alternate}
-body::after{content:"";position:fixed;inset:0;z-index:-1;opacity:.55;pointer-events:none;background-image:radial-gradient(1px 1px at 20px 30px,#fff,transparent),radial-gradient(1px 1px at 120px 80px,#cfeeff,transparent),radial-gradient(1.6px 1.6px at 200px 160px,#fff,transparent),radial-gradient(1px 1px at 60px 190px,#e0d4ff,transparent),radial-gradient(1px 1px at 170px 20px,#fff,transparent);background-size:240px 240px}
-@keyframes drift{to{transform:translate3d(-4%,3%,0) scale(1.08)}}
-::selection{background:rgba(139,92,246,.55)}
-.top{max-width:920px;margin:0 auto 14px;display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--r);background:var(--glass);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);position:relative;overflow:hidden}
-.top::after{content:"";position:absolute;top:0;left:-45%;width:40%;height:2px;background:linear-gradient(90deg,transparent,var(--cy),#fff,transparent);animation:streak 1.8s cubic-bezier(.2,.7,.2,1) .4s 1 both}
-@keyframes streak{to{left:110%}}
-.logo{width:42px;height:42px;flex:none;filter:drop-shadow(0 0 10px rgba(94,231,255,.5))}
-.ttl h1{margin:0;font-size:20px;font-weight:800;line-height:1.2}
-.ttl span{color:var(--mut);font-size:13px}
-.live{margin-inline-start:auto;width:10px;height:10px;border-radius:50%;background:#4b4875;flex:none}
-.live.on{background:var(--ok);animation:pulse 2.4s infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(61,255,178,.55)}70%,100%{box-shadow:0 0 0 9px rgba(61,255,178,0)}}
-#app{max-width:920px;margin:0 auto}
-.card{position:relative;background:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 14px 34px -16px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05)}
-input{font:inherit;color:var(--ink);background:rgba(8,6,24,.62);border:1px solid var(--line);border-radius:12px;padding:10px 13px;min-height:44px;outline:none;transition:border-color .15s,box-shadow .15s}
-input::placeholder{color:#7471a0}
-input:focus-visible{border-color:var(--cy);box-shadow:0 0 0 3px rgba(94,231,255,.18)}
-input[type=checkbox]{flex:none;width:22px;height:22px;min-height:0;padding:0;accent-color:var(--vio)}
-button{font:inherit;font-weight:700;color:#0b0820;border:0;border-radius:12px;padding:10px 16px;min-height:44px;cursor:pointer;background:linear-gradient(135deg,var(--cy),var(--vio));box-shadow:0 8px 20px -8px rgba(139,92,246,.75);transition:transform .12s,filter .15s}
-button:hover{filter:brightness(1.12)}
-button:active{transform:translateY(1px) scale(.98)}
-button:focus-visible{outline:2px solid #fff;outline-offset:2px}
-button.s{background:rgba(255,255,255,.07);color:var(--ink);border:1px solid var(--line);box-shadow:none}
-button.d{background:rgba(255,90,122,.14);color:#ffa3b6;border:1px solid rgba(255,90,122,.45);box-shadow:none}button.d:hover{background:linear-gradient(135deg,var(--pink),var(--bad));color:#fff;filter:none}
-.it .row{margin:0}.it .row button{min-height:38px;padding:6px 13px;font-size:13.5px}
-.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.row:last-child{margin-bottom:0}.row>input{flex:1;min-width:130px}
-.tabs{display:flex;gap:4px;overflow-x:auto;padding:5px;margin-bottom:14px;border:1px solid var(--line);border-radius:999px;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tabs button{flex:0 0 auto;min-height:40px;padding:8px 17px;border-radius:999px;background:transparent;color:var(--mut);box-shadow:none;border:0;white-space:nowrap}
-.tabs button.on{background:linear-gradient(135deg,rgba(94,231,255,.95),rgba(139,92,246,.98));color:#0b0820;box-shadow:0 0 24px -4px rgba(94,231,255,.7)}
-.tabs button.s{margin-inline-start:auto}
-.it{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.it:last-child{border:0}
-label.it{cursor:pointer}
-.m{color:var(--mut);font-size:12.5px;direction:ltr;unicode-bidi:plaintext;overflow-wrap:anywhere}
-.tag{display:inline-block;font-size:11.5px;padding:2px 10px;border-radius:999px;background:rgba(139,92,246,.2);color:#d3c7ff;border:1px solid rgba(139,92,246,.38)}
-.tag.bad{background:rgba(255,90,122,.15);color:#ff9fb3;border-color:rgba(255,90,122,.42)}
-.bad{color:var(--bad)}.ok{color:var(--ok)}
-.v{direction:ltr;unicode-bidi:plaintext;overflow-wrap:anywhere;text-align:left}.it>div>.v{font-weight:700;font-size:16px}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px}.grid .card{margin:0;padding:14px}
-@media(min-width:640px){.grid{grid-template-columns:repeat(4,1fr)}}
-.big{font-size:28px;font-weight:800;line-height:1.2;color:var(--cy);text-shadow:0 0 26px rgba(94,231,255,.4);font-variant-numeric:tabular-nums}
-.v.big{font-size:21px;letter-spacing:.06em;user-select:all;margin-top:6px}
-.chat{display:flex;flex-direction:column;height:58vh;min-height:260px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);padding:12px;background:rgba(10,8,30,.55);margin-bottom:10px}
-.msg{align-self:flex-end;margin-bottom:10px;max-width:86%;padding:8px 12px;border-radius:14px 14px 14px 4px;background:rgba(255,255,255,.06);border:1px solid var(--line)}
-.msg.me{background:linear-gradient(135deg,rgba(94,231,255,.16),rgba(139,92,246,.3));border-color:rgba(139,92,246,.45);align-self:flex-start;border-radius:14px 14px 4px 14px}
-.msg .m{margin-bottom:2px}.msg button{min-height:28px;padding:2px 10px;font-size:12px;margin-inline-start:8px}
-.tx{white-space:pre-wrap;word-break:break-word}
-.perms{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.perms .it{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);font-size:13.5px;flex-wrap:nowrap}.perms .it:last-child{border:1px solid var(--line)}.perms .it:has(input:checked){border-color:rgba(139,92,246,.65);background:rgba(139,92,246,.16)}.card>button{margin-top:8px}.card>.m{margin:6px 0 8px;line-height:1.7}.card>.row{margin-top:12px}
-.sk{display:block;margin:0 auto;image-rendering:pixelated;width:192px;height:192px;border:1px solid var(--line);border-radius:14px;background:conic-gradient(#1c1842 25%,#120f30 0 50%,#1c1842 0 75%,#120f30 0) 0 0/16px 16px;box-shadow:0 0 30px -8px rgba(139,92,246,.6)}
-.out .top{max-width:420px;flex-direction:column;text-align:center;padding:30px 16px 24px;margin-top:9vh}
-.out .logo{width:76px;height:76px}.out .ttl h1{font-size:26px}
-.out #app{max-width:420px}
-@supports not (backdrop-filter:blur(1px)){.card,.top,.tabs{background:rgba(22,18,48,.94)}}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
-</style><meta name="theme-color" content="#07060f"></head><body class="${authed ? "in" : "out"}"><header class="top"><svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#5ee7ff"/></linearGradient></defs><path d="M3 41 24 20" stroke="url(#lg)" stroke-width="3.5" stroke-linecap="round" opacity=".35"/><path d="M2 31 17 16" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" opacity=".6"/><path d="M12 43 28 27" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" opacity=".6"/><rect x="22" y="6" width="19" height="19" rx="5" transform="rotate(45 31.5 15.5)" fill="url(#lg)"/><rect x="28" y="12" width="7" height="7" rx="2" transform="rotate(45 31.5 15.5)" fill="#07060f" opacity=".35"/></svg><div class="ttl"><h1>BlockComet</h1><span>${isStaff ? "لوحة الستاف" : "لوحة المطورين"}</span></div>${authed ? '<span class="live" id="live" title="الشات"></span>' : ""}</header><div id="app"></div>
+${BASE_CSS}</style><meta name="theme-color" content="#07060f"></head><body class="${authed ? "in" : "out"}"><header class="top"><svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#5ee7ff"/></linearGradient></defs><path d="M3 41 24 20" stroke="url(#lg)" stroke-width="3.5" stroke-linecap="round" opacity=".35"/><path d="M2 31 17 16" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" opacity=".6"/><path d="M12 43 28 27" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" opacity=".6"/><rect x="22" y="6" width="19" height="19" rx="5" transform="rotate(45 31.5 15.5)" fill="url(#lg)"/><rect x="28" y="12" width="7" height="7" rx="2" transform="rotate(45 31.5 15.5)" fill="#07060f" opacity=".35"/></svg><div class="ttl"><h1>BlockComet</h1><span>${isStaff ? "لوحة الستاف" : "لوحة المطورين"}</span></div>${authed ? '<span class="live" id="live" title="الشات"></span>' : ""}</header><div id="app"></div>
 <script nonce="${nonce}">
 const A=document.getElementById("app");
 const el=(t,a={},...k)=>{const e=document.createElement(t);for(const[x,v]of Object.entries(a)){if(x==="onclick")e.onclick=v;else if(x==="class")e.className=v;else e.setAttribute(x,v)}for(const c of k)e.append(c);return e};
@@ -427,14 +371,17 @@ function panelJs() {
   return `
 const can=k=>ME.role==="admin"||!!ME.perms[k];
 const PL={stats:"الإحصاءات",logs:"السجل",skins:"صور السكنات",ips:"رؤية الـ IP",devices:"الجهاز والموقع",times:"الأوقات (أول ظهور وآخر نشاط)",ban:"حظر الأسماء",banip:"حظر الـ IP",unban:"فك الحظر",delete:"حذف السكنات"};
-const TY={ban_name:"حظر لاعب",ban_ip:"حظر IP",unban_name:"فك حظر لاعب",unban_ip:"فك حظر IP",skin_put:"رفع/تحديث سكن",skin_delete:"حذف سكن",admin_delete_skin:"حذف سكن",blocked:"محاولة محظورة",admin_login:"دخول",admin_login_failed:"دخول فاشل",staff_create:"إنشاء ستاف",staff_update:"تعديل ستاف",staff_reset:"كلمة سر جديدة لستاف",staff_delete:"حذف ستاف"};
+const RC={crash:"اللانشر ما يفتح",game:"اللعبة تعلق أو تكرش",perf:"لاق / أداء ضعيف",login:"الحساب وتسجيل الدخول",skins:"السكنات",mods:"المودات / Meteor",ui:"الواجهة والترجمة",suggest:"اقتراح",other:"أخرى"};
+const RS={new:"جديد",review:"قيد المراجعة",done:"تم الحل",rejected:"مرفوض"};
+let RNEW=0;
+const TY={report_status:"حالة بلاغ",report_delete:"حذف بلاغ",ban_name:"حظر لاعب",ban_ip:"حظر IP",unban_name:"فك حظر لاعب",unban_ip:"فك حظر IP",skin_put:"رفع/تحديث سكن",skin_delete:"حذف سكن",admin_delete_skin:"حذف سكن",blocked:"محاولة محظورة",admin_login:"دخول",admin_login_failed:"دخول فاشل",staff_create:"إنشاء ستاف",staff_update:"تعديل ستاف",staff_reset:"كلمة سر جديدة لستاف",staff_delete:"حذف ستاف"};
 const ago=t=>{if(!t)return "—";const s=Math.floor((Date.now()-t)/1000);if(s<60)return "قبل لحظات";if(s<3600)return "قبل "+Math.floor(s/60)+" دقيقة";if(s<86400)return "قبل "+Math.floor(s/3600)+" ساعة";return "قبل "+Math.floor(s/86400)+" يوم"};
 const devOf=o=>[o.dv,o.os].filter(Boolean).join(" · ")||"غير معروف";
 const locOf=o=>[o.cy,o.c].filter(Boolean).join(", ")||"—";
-const TABS=[["stats","الإحصاءات",can("stats")],["logs","السجل",can("logs")],["players","اللاعبون",true],["clients","الأجهزة",can("ips")],["bans","المحظورون",true],["chat","الشات",true],["staff","الستاف",ME.role==="admin"]].filter(t=>t[2]);
+const TABS=[["stats","الإحصاءات",can("stats")],["logs","السجل",can("logs")],["players","اللاعبون",true],["clients","الأجهزة",can("ips")],["bans","المحظورون",true],["reports","البلاغات",true],["chat","الشات",true],["staff","الستاف",ME.role==="admin"]].filter(t=>t[2]);
 const tabs=el("div",{class:"tabs"});const box=el("div");A.append(tabs,box);let cur=TABS[0][0];
 const out=async()=>{await fetch("/admin/logout",{method:"POST",headers:{"x-admin":"1"},credentials:"same-origin"});location.reload()};
-const draw=()=>{tabs.replaceChildren(...TABS.map(([k,n])=>el("button",{class:cur===k?"on":"",onclick:()=>{cur=k;if(k==="chat")CH.unread=0;draw();show()}},n+(k==="chat"&&CH.unread?" ("+CH.unread+")":""))),el("button",{class:"s",onclick:out},"خروج"))};
+const draw=()=>{tabs.replaceChildren(...TABS.map(([k,n])=>el("button",{class:cur===k?"on":"",onclick:()=>{cur=k;if(k==="chat")CH.unread=0;draw();show()}},n+(k==="chat"&&CH.unread?" ("+CH.unread+")":"")+(k==="reports"&&RNEW?" ("+RNEW+")":""))),el("button",{class:"s",onclick:out},"خروج"))};
 const FN={};
 async function show(){box.replaceChildren(el("div",{class:"m"},"..."));FN[cur]()}
 const kv=(k,v)=>el("div",{class:"it"},el("span",{class:"m"},k),el("span",{class:"v"},v||"—"));
@@ -476,6 +423,26 @@ if(can("ban")||(can("banip")&&can("ips"))){const v=el("input",{placeholder:can("
 parts.push(el("div",{class:"card"},el("div",{class:"row"},v,r),el("div",{class:"row"},can("ban")?el("button",{class:"d",onclick:add("name")},"حظر لاعب"):"",can("banip")&&can("ips")?el("button",{class:"d",onclick:add("ip")},"حظر IP"):"")))}
 parts.push(el("div",{class:"card"},...(d.bans||[]).map(b=>el("div",{class:"it"},el("div",{},el("span",{class:"tag"},b.kind==="ip"?"IP":"لاعب")," ",el("span",{class:"v"},b.value),el("div",{class:"m"},when(b.t)+(b.reason?"  "+b.reason:""))),can("unban")?el("button",{class:"s",onclick:async()=>{await call("unban",{kind:b.kind,value:b.value});FN.bans()}},"فك"):""))));
 box.replaceChildren(...parts)};
+async function reportDetail(id){box.replaceChildren(el("div",{class:"m"},"..."));const d=await call("report?id="+encodeURIComponent(id));
+if(d.error){box.replaceChildren(el("div",{class:"card"},d.error),el("button",{class:"s",onclick:()=>FN.reports()},"رجوع"));return}
+const r=d.report;const acts=el("div",{class:"row"},el("button",{class:"s",onclick:()=>FN.reports()},"رجوع"));
+for(const k of Object.keys(RS)){if(k!==r.st)acts.append(el("button",{class:"s",onclick:async()=>{const x=await call("report-status",{id,status:k});if(x.error)alert(x.error);else reportDetail(id)}},"← "+RS[k]))}
+const acts2=el("div",{class:"row"});
+if(can("banip"))acts2.append(el("button",{class:"d",onclick:async()=>{if(!confirm("حظر صاحب هذا البلاغ (الـ IP)؟"))return;const x=await call("report-ban",{id});alert(x.error||"تم الحظر")}},"حظر المرسل"));
+if(can("delete"))acts2.append(el("button",{class:"d",onclick:async()=>{if(!confirm("حذف البلاغ؟"))return;await call("report-delete",{id});FN.reports()}},"حذف البلاغ"));
+const info=el("div",{class:"card"},kv("القسم",RC[r.cat]||r.cat),kv("الحالة",RS[r.st]||r.st),kv("الوقت",when(r.t)+" ("+ago(r.t)+")"),kv("للتواصل",r.contact));
+if(r.ip!==undefined)info.append(kv("الـ IP",r.ip));
+const parts=[acts,info,el("div",{class:"card"},el("div",{class:"tx"},r.text))];
+if(r.img){const im=el("img",{class:"rimg",alt:""});im.setAttribute("src","/admin/api/report-img?id="+encodeURIComponent(id));im.onclick=()=>window.open("/admin/api/report-img?id="+encodeURIComponent(id),"_blank");parts.push(el("div",{class:"card"},im))}
+if(acts2.childNodes.length)parts.push(acts2);box.replaceChildren(...parts)}
+FN.reports=async function(){const d=await call("reports");const all=d.reports||[];RNEW=all.filter(r=>r.s==="new").length;draw();
+const st=el("select",{},el("option",{value:"all"},"كل الحالات"),...Object.keys(RS).map(k=>el("option",{value:k},RS[k])));
+const ct=el("select",{},el("option",{value:"all"},"كل الأقسام"),...Object.keys(RC).map(k=>el("option",{value:k},RC[k])));
+const list=el("div",{class:"card"});
+const paint=()=>{const rows=all.filter(r=>(st.value==="all"||r.s===st.value)&&(ct.value==="all"||r.c===ct.value));
+list.replaceChildren(...(rows.length?rows.map(r=>el("div",{class:"it"},el("div",{},el("span",{class:"tag"+(r.s==="new"?"":" off")},RS[r.s]||r.s)," ",el("span",{class:"tag"},RC[r.c]||r.c),r.i?el("span",{class:"tag"},"📎 صورة"):"",el("div",{class:"m"},ago(r.t)),el("div",{class:"tx"},r.x)),el("button",{class:"s",onclick:()=>reportDetail(r.id)},"فتح"))):[el("div",{class:"m"},"ما في بلاغات")]))};
+st.onchange=paint;ct.onchange=paint;paint();box.replaceChildren(el("div",{class:"row"},st,ct,el("button",{class:"s",onclick:()=>FN.reports()},"تحديث")),list)};
+call("reports").then(d=>{RNEW=(d.reports||[]).filter(r=>r.s==="new").length;draw()}).catch(()=>{});
 const permBoxes=cur=>{const w=el("div",{class:"perms"});const cbs={};for(const k of Object.keys(PL)){const c=el("input",{type:"checkbox"});c.checked=!!cur[k];cbs[k]=c;w.append(el("label",{class:"it"},el("span",{},PL[k]),c))}return{w,get:()=>{const o={};for(const k in cbs)o[k]=cbs[k].checked;return o}}};
 const pwCard=(name,pw)=>el("div",{class:"card"},el("div",{},"كلمة سر "+name+" (انسخها الآن، ما تظهر مرة ثانية):"),el("div",{class:"v big"},pw));
 function editStaff(s){const pb=permBoxes(s.perms);const lim=el("input",{type:"number",min:"0",max:"1000",value:String(s.limit)});const off=el("input",{type:"checkbox"});off.checked=s.off;
@@ -552,7 +519,8 @@ export async function admin(req, env, ctx, ip) {
     h.set("x-chat-name", sess.name); h.set("x-chat-role", sess.role); h.set("x-chat-exp", String(sess.exp || 0));
     return env.CHAT.get(env.CHAT.idFromName("staff")).fetch(new Request(req, { headers: h }));
   }
-  if (req.headers.get("x-admin") !== "1") return reply("forbidden", 403);
+  const imgGet = req.method === "GET" && path === "/admin/api/report-img";
+  if (!imgGet && req.headers.get("x-admin") !== "1") return reply("forbidden", 403);
   if (path === "/admin/logout" && req.method === "POST") return jsonReply({ ok: true }, 200, { "set-cookie": "bc_admin=; Path=/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict" });
   if (path.startsWith("/admin/api/")) return api(req, env, ctx, url, ip, sess);
   return reply("not found", 404);
